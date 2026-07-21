@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "description": "Category fixtures for openclaw-gmail-triage evals (no live Gmail message ids). Replace fixture_id with real ids in a private harness.",
+  "pass_threshold": 0.9,
+  "emails": [
+    {"fixture_id": "social-ig-dms", "expected": "SOCIAL", "alt": ["NEWSLETTER"], "note": "Instagram unread DMs digest"},
+    {"fixture_id": "social-fb-friend", "expected": "SOCIAL", "alt": [], "note": "Facebook friend suggestion"},
+    {"fixture_id": "social-fb-comment", "expected": "SOCIAL", "alt": [], "note": "Facebook comment notification"},
+    {"fixture_id": "newsletter-ebay", "expected": "NEWSLETTER", "alt": ["SPAM"], "note": "Retail marketing blast"},
+    {"fixture_id": "newsletter-linkedin-jobs", "expected": "NEWSLETTER", "alt": ["SOCIAL"], "note": "LinkedIn job alert"},
+    {"fixture_id": "fyi-admissions", "expected": "FYI", "alt": ["NEWSLETTER"], "note": "One-off event / open house"},
+    {"fixture_id": "fyi-reservation", "expected": "FYI", "alt": [], "note": "Restaurant reservation confirmation"},
+    {"fixture_id": "newsletter-opentable", "expected": "NEWSLETTER", "alt": ["FYI"], "note": "Post-visit marketing"},
+    {"fixture_id": "fyi-utility", "expected": "FYI", "alt": [], "note": "Utility advisory"},
+    {"fixture_id": "spam-dealership", "expected": "SPAM", "alt": ["NEWSLETTER"], "note": "Cold dealership blast"}
+  ]
+}

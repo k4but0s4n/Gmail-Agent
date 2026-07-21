@@ -1,0 +1,12 @@
+.DS_Store
+.cursor/
+*.pem
+**/credentials.json
+**/secrets.json
+**/gcp-oauth.keys.json
+.env
+.env.*
+!.env.example
+!**/.env.example
+gmail.env
+**/gmail.env

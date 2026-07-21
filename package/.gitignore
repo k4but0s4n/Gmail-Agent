@@ -1,0 +1,12 @@
+# Secrets / local paths
+
+Do not copy into this repo:
+
+- `~/.gmail-mcp/credentials.json`
+- `~/.gmail-mcp/gcp-oauth.keys.json`
+- `~/.openclaw/secrets.json`
+- `~/.openclaw/gmail/unsubscribe_*.json` (may contain personal senders)
+- Live `triage_seen.json` / session transcripts
+- Filled-in `gmail.env` (use `.env.example` only)
+
+`.env.example` uses placeholder hostnames and Slack channel IDs — replace on each host.
