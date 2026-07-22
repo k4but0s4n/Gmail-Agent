@@ -72,7 +72,7 @@ python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch-add 'News <news@bra
 
 Offline test (no Gmail): `python3 package/scripts/test_post_unsub_watch.py`
 
-Full operator command list (natural language + invocations): [`package/docs/COMMANDS.md`](./package/docs/COMMANDS.md).
+Full operator command list (imperative phrases + invocations): [`package/docs/COMMANDS.md`](./package/docs/COMMANDS.md).
 
 ---
 
@@ -100,7 +100,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for release notes.
     ├── scripts/             # cron runners
     ├── openclaw/            # agent rules + SKILL.md
     ├── docs/INSTALL.md
-    ├── docs/COMMANDS.md     # operator command inventory
+    ├── docs/COMMANDS.md     # imperative command phrases + CLI
     └── .env.example
 ```
 

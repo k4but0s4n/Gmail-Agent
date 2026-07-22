@@ -39,7 +39,7 @@ set -a; source "$OPENCLAW_HOME/gmail.env"; set +a
 
 Scripts auto-source `$OPENCLAW_HOME/gmail.env` (or `GMAIL_ENV_FILE`) when present. Also export the same vars for the OpenClaw **MCP process** environment (gateway env or wrapper) — otherwise `email_query` / sync fail at runtime.
 
-Operator command inventory (every CLI / runner / MCP type): [`COMMANDS.md`](./COMMANDS.md).
+Operator commands (imperative phrases + invocations): [`COMMANDS.md`](./COMMANDS.md).
 
 Locks live under `$OPENCLAW_HOME/run/` (not `/tmp`).
 

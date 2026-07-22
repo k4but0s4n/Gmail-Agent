@@ -20,7 +20,7 @@
 | `openclaw/cron.example.json` | Example cron registrations | |
 | `openclaw/gmail-eval-set.json` | Category fixtures | No personal message ids |
 | `docs/INSTALL.md` | Blank-host install | |
-| `docs/COMMANDS.md` | Operator command inventory (NL + invocations) | |
+| `docs/COMMANDS.md` | Imperative command phrases + CLI invocations | |
 | `docs/ARCHITECTURE.md` | Data/control plane | |
 | `.env.example` | Env template | |
 | `LICENSE` | MIT | |

@@ -8,7 +8,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **Commands doc** — [`package/docs/COMMANDS.md`](package/docs/COMMANDS.md): natural-language inventory of every runnable command type (unsubscribe CLI, triage, sync/prune, runners, tests, MCP), linked from README / INSTALL / MANIFEST.
+- **Commands doc** — [`package/docs/COMMANDS.md`](package/docs/COMMANDS.md): imperative operator phrases with `[placeholders]` (e.g. *List pending to unsubscribe*, *Unsuppress this sender/domain `[…]`*) plus CLI invocations; linked from README / INSTALL / MANIFEST.
 
 ## [0.2.0] — 2026-07-22
 
