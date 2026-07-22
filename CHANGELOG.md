@@ -5,6 +5,11 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Commands doc** — [`package/docs/COMMANDS.md`](package/docs/COMMANDS.md): natural-language inventory of every runnable command type (unsubscribe CLI, triage, sync/prune, runners, tests, MCP), linked from README / INSTALL / MANIFEST.
+
 ## [0.2.0] — 2026-07-22
 
 ### Added

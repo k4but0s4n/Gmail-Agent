@@ -8,6 +8,7 @@ An agent lists unread mail, assigns one of six labels, posts a short Slack diges
 |---|---|
 | **Package** | [`package/`](./package/) |
 | **Install** | [`package/docs/INSTALL.md`](./package/docs/INSTALL.md) |
+| **Commands** | [`package/docs/COMMANDS.md`](./package/docs/COMMANDS.md) |
 | **Changelog** | [`CHANGELOG.md`](./CHANGELOG.md) |
 | **Security** | [`SECURITY.md`](./SECURITY.md) |
 | **License** | [MIT](./LICENSE) |
@@ -71,6 +72,8 @@ python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch-add 'News <news@bra
 
 Offline test (no Gmail): `python3 package/scripts/test_post_unsub_watch.py`
 
+Full operator command list (natural language + invocations): [`package/docs/COMMANDS.md`](./package/docs/COMMANDS.md).
+
 ---
 
 ## Safety
@@ -97,8 +100,15 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for release notes.
     ├── scripts/             # cron runners
     ├── openclaw/            # agent rules + SKILL.md
     ├── docs/INSTALL.md
+    ├── docs/COMMANDS.md     # operator command inventory
     └── .env.example
 ```
+
+---
+
+## Commands
+
+See **[`package/docs/COMMANDS.md`](./package/docs/COMMANDS.md)** for every runnable command type (unsubscribe CLI, triage, sync/prune, cron runners, tests, MCP servers) in natural language with example invocations.
 
 ---
 

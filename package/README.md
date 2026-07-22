@@ -2,7 +2,7 @@
 
 Safe, human-in-the-loop Gmail triage for OpenClaw: MCP servers, cron scripts, and agent instructions.
 
-**Install:** [`docs/INSTALL.md`](./docs/INSTALL.md) · **Changes:** [`../CHANGELOG.md`](../CHANGELOG.md) · **License:** MIT
+**Install:** [`docs/INSTALL.md`](./docs/INSTALL.md) · **Commands:** [`docs/COMMANDS.md`](./docs/COMMANDS.md) · **Changes:** [`../CHANGELOG.md`](../CHANGELOG.md) · **License:** MIT
 
 ## Layout
 
