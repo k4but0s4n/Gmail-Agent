@@ -38,10 +38,11 @@ LABEL_MODE = os.environ.get("GMAIL_TRIAGE_LABEL_MODE", "batch").strip().lower()
 BATCH_MODIFY_CHUNK = max(1, min(int(os.environ.get("GMAIL_TRIAGE_BATCH_CHUNK", "100")), 1000))
 # Max items per finalize call (chunked triage). Soft override: GMAIL_TRIAGE_MAX_ITEMS
 MAX_ITEMS = max(1, min(int(os.environ.get("GMAIL_TRIAGE_MAX_ITEMS", "25")), 500))
-# After LABEL_PREFIX/NEWSLETTER (and SOCIAL) label, remove UNREAD. Soft off:
-# GMAIL_MARK_NEWSLETTER_READ=0 / GMAIL_MARK_SOCIAL_READ=0
+# After LABEL_PREFIX/NEWSLETTER (and SOCIAL/SPAM) label, remove UNREAD. Soft off:
+# GMAIL_MARK_NEWSLETTER_READ=0 / GMAIL_MARK_SOCIAL_READ=0 / GMAIL_MARK_SPAM_READ=0
 MARK_NEWSLETTER_READ = os.environ.get("GMAIL_MARK_NEWSLETTER_READ", "1").strip().lower() in {"1", "true", "yes", "on"}
 MARK_SOCIAL_READ = os.environ.get("GMAIL_MARK_SOCIAL_READ", "1").strip().lower() in {"1", "true", "yes", "on"}
+MARK_SPAM_READ = os.environ.get("GMAIL_MARK_SPAM_READ", "1").strip().lower() in {"1", "true", "yes", "on"}
 # Post-unsub recidivists forced to SPAM are marked read by default.
 MARK_POST_UNSUB_SPAM_READ = os.environ.get("GMAIL_MARK_POST_UNSUB_SPAM_READ", "1").strip().lower() in {
     "1",
@@ -54,6 +55,8 @@ if MARK_NEWSLETTER_READ:
     MARK_READ_CATS.add("NEWSLETTER")
 if MARK_SOCIAL_READ:
     MARK_READ_CATS.add("SOCIAL")
+if MARK_SPAM_READ:
+    MARK_READ_CATS.add("SPAM")
 
 TRIAGE_SEEN = Path(
     os.environ.get("GMAIL_TRIAGE_SEEN") or str(cfg.state_dir() / "triage_seen.json")
@@ -62,7 +65,7 @@ TRIAGE_SEEN = Path(
 ALLOWED = {"URGENT", "ACTION-REQUIRED", "FYI", "SOCIAL", "NEWSLETTER", "SPAM"}
 LABEL_PREFIX = cfg.label_prefix()
 OC_LABELS = {c: cfg.label_name(c) for c in ALLOWED}
-SERVER_INFO = {"name": "gmail-triage-ops", "version": "0.3.0"}
+SERVER_INFO = {"name": "gmail-triage-ops", "version": "0.3.1"}
 PROTOCOL_VERSION = "2024-11-05"
 
 TOOLS = [
@@ -70,7 +73,8 @@ TOOLS = [
         "name": "finalize_triage",
         "description": (
             "After you categorize email_query hits, call this ONCE with the full list. "
-            f"Applies {LABEL_PREFIX}/<CAT> labels, marks NEWSLETTER/SOCIAL read, and queues "
+            f"Applies {LABEL_PREFIX}/<CAT> labels (replacing any other {LABEL_PREFIX}/* "
+            "category label on the message), marks NEWSLETTER/SOCIAL/SPAM read, and queues "
             "NEWSLETTER/SPAM into the unsubscribe approval pipeline (propose only — "
             "never executes unsubscribe; SOCIAL is never auto-queued). "
             "Senders successfully unsubscribed earlier are watched: after a grace window, "
@@ -204,8 +208,25 @@ def ensure_oc_labels() -> dict[str, str]:
     return out
 
 
-def apply_label(message_id: str, label_id: str, remove_unread: bool = False) -> dict:
-    remove = ["UNREAD"] if remove_unread else []
+def sibling_oc_label_ids(label_ids: dict[str, str], keep_cat: str) -> list[str]:
+    """Other PREFIX/* category label ids to strip so a message has exactly one category."""
+    out = []
+    for cat, lid in (label_ids or {}).items():
+        if cat == keep_cat or not lid:
+            continue
+        out.append(lid)
+    return out
+
+
+def apply_label(
+    message_id: str,
+    label_id: str,
+    remove_unread: bool = False,
+    remove_label_ids: list[str] | None = None,
+) -> dict:
+    remove = list(remove_label_ids or [])
+    if remove_unread and "UNREAD" not in remove:
+        remove.append("UNREAD")
     status, data = gmail_api(
         "POST",
         f"messages/{message_id}/modify",
@@ -219,11 +240,15 @@ def apply_label(message_id: str, label_id: str, remove_unread: bool = False) -> 
         "label_id": label_id,
         "mode": "sequential",
         "marked_read": bool(remove_unread),
+        "replaced_oc_labels": len([x for x in remove if x != "UNREAD"]),
     }
 
 
 def apply_labels_batch(items: list, label_ids: dict[str, str]) -> list:
-    """Group by (category, mark_read) and call messages.batchModify (chunked)."""
+    """Group by (category, mark_read) and call messages.batchModify (chunked).
+
+    Always strips other PREFIX/* category labels so reclassify replaces, not stacks.
+    """
     # key: (category, mark_read_bool) -> message_ids
     groups: dict[tuple[str, bool], list[str]] = {}
     for item in items:
@@ -234,7 +259,9 @@ def apply_labels_batch(items: list, label_ids: dict[str, str]) -> list:
     results = []
     for (cat, mark_read), mids in groups.items():
         label_id = label_ids[cat]
-        remove = ["UNREAD"] if mark_read else []
+        remove = sibling_oc_label_ids(label_ids, cat)
+        if mark_read:
+            remove = list(remove) + ["UNREAD"]
         seen = set()
         uniq = []
         for mid in mids:
@@ -274,7 +301,8 @@ def apply_labels_batch(items: list, label_ids: dict[str, str]) -> list:
                             "category": cat,
                             "label_id": label_id,
                             "mode": "batch",
-                            "marked_read": bool(remove),
+                            "marked_read": bool(mark_read),
+                            "replaced_oc_labels": len([x for x in remove if x != "UNREAD"]),
                         }
                     )
     return results
@@ -503,6 +531,7 @@ def finalize_triage(items: list) -> dict:
                 item["message_id"],
                 label_ids[item["category"]],
                 remove_unread=remove_unread,
+                remove_label_ids=sibling_oc_label_ids(label_ids, item["category"]),
             )
             lr["category"] = item["category"]
             label_results.append(lr)
@@ -576,7 +605,8 @@ def finalize_triage(items: list) -> dict:
         "unsub_skipped_count": len(skipped),
         "parse_errors": errors,
         "note": (
-            "Labels applied. NEWSLETTER/SPAM handed to unsubscribe approval queue. "
+            "Labels applied (exclusive PREFIX/* — prior category labels removed). "
+            "NEWSLETTER/SPAM handed to unsubscribe approval queue. "
             "Post-unsub watch past grace → SPAM (no re-queue). "
             "SOCIAL labeled only (not auto-unsub). Nothing was unsubscribed. "
             "User must approve pending ids."

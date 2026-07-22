@@ -51,9 +51,9 @@ URLs and paths come from env via `mcp/_config.py` (`CHROMA_URL`, `GMAIL_EMBED_UR
 | FYI | PREFIX/FYI | no | no | no |
 | SOCIAL | PREFIX/SOCIAL | yes | no | no |
 | NEWSLETTER | PREFIX/NEWSLETTER | yes | yes | yes |
-| SPAM | PREFIX/SPAM | no* | yes* | no |
+| SPAM | PREFIX/SPAM | yes | yes* | no |
 
-`PREFIX` = `GMAIL_LABEL_PREFIX` (default `OC`).
+`PREFIX` = `GMAIL_LABEL_PREFIX` (default `OC`). Categories are **exclusive**: applying one `PREFIX/<CAT>` removes other `PREFIX/*` category labels on that message.
 
 \* Post-unsub recidivists (sender watched after a successful approve, past grace): forced to **SPAM**, marked read by default (`GMAIL_MARK_POST_UNSUB_SPAM_READ`), and **not** re-queued for unsubscribe. **URGENT** / **ACTION-REQUIRED** are never overridden. Domain promotion only counts **NEWSLETTER** / **SPAM** siblings.
 

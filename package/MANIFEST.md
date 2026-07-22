@@ -4,7 +4,7 @@
 |---|---|---|
 | `mcp/_config.py` | Shared env/path helpers | No LAN IPs in source |
 | `mcp/email_query_mcp.py` | MCP: `email_query`, `list_recent` | v0.4.0 · requires embed/retrieve/chroma URLs |
-| `mcp/gmail_triage_ops_mcp.py` | MCP: `finalize_triage` | v0.3.0 · post-unsub SPAM override |
+| `mcp/gmail_triage_ops_mcp.py` | MCP: `finalize_triage` | v0.3.1 · exclusive OC labels + SPAM mark-read |
 | `mcp/list_unsubscribe_mcp.py` | MCP: unsub propose/approve | v0.5.0 · watch list after approve |
 | `mcp/gmail_sync.py` | Gmail → Chroma sync | Env: sync lookback/max + URLs |
 | `mcp/gmail_prune.py` | Prune old index docs | `CHROMA_URL` |

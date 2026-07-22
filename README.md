@@ -32,7 +32,7 @@ flowchart LR
 1. **Sync** recent Gmail into Chroma (embeddings + metadata).
 2. **List** unread mail that is not already labeled and not yet seen (pages of ≤25).
 3. **Categorize** into six buckets; call **one** `finalize_triage` per page.
-4. **Finalize** applies `{prefix}/<CAT>` labels (default `OC/`), marks NEWSLETTER/SOCIAL read, queues NEWSLETTER/SPAM for approval.
+4. **Finalize** applies `{prefix}/<CAT>` labels (default `OC/`), **replacing** any other `{prefix}/*` category on that message, marks NEWSLETTER/SOCIAL/SPAM read, queues NEWSLETTER/SPAM for approval.
 5. **Slack** shows counts for all categories; bullets only for ACTION/URGENT and NEWSLETTER.
 6. **Verify** recovers if the model drops the meta-tool `tool_call` `id`.
 7. **Post-unsub watch** — after you approve an unsub, later mail from that sender (past a grace window) is forced to **SPAM** and not re-queued.
@@ -48,9 +48,9 @@ flowchart LR
 | FYI | — | — | — |
 | SOCIAL | yes | — | — |
 | NEWSLETTER | yes | propose | yes |
-| SPAM | —† | propose† | — |
+| SPAM | yes | propose | — |
 
-† After a successful unsub approve, the sender is watched. Past `GMAIL_POST_UNSUB_GRACE_DAYS` (default 3), matching mail is forced to SPAM, marked read by default, and **not** re-queued. See [Post-unsub watch](#post-unsub-watch).
+Categories are exclusive: reclassify replaces the previous `OC/*` label (does not stack). After a successful unsub approve, the sender is watched — see [Post-unsub watch](#post-unsub-watch).
 
 ---
 
