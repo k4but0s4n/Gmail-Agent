@@ -108,7 +108,7 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for release notes.
 
 ## Commands
 
-See **[`package/docs/COMMANDS.md`](./package/docs/COMMANDS.md)** for every runnable command type (unsubscribe CLI, triage, sync/prune, cron runners, tests, MCP servers) in natural language with example invocations.
+See **[`package/docs/COMMANDS.md`](./package/docs/COMMANDS.md)** for every runnable command as an imperative phrase with `[placeholders]` (e.g. *List pending to unsubscribe*, *Unsuppress this sender/domain `[…]`*).
 
 ---
 
