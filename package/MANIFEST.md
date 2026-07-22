@@ -4,8 +4,8 @@
 |---|---|---|
 | `mcp/_config.py` | Shared env/path helpers | No LAN IPs in source |
 | `mcp/email_query_mcp.py` | MCP: `email_query`, `list_recent` | v0.4.0 · requires embed/retrieve/chroma URLs |
-| `mcp/gmail_triage_ops_mcp.py` | MCP: `finalize_triage` | v0.2.0 · `GMAIL_LABEL_PREFIX` |
-| `mcp/list_unsubscribe_mcp.py` | MCP: unsub propose/approve | Human-in-the-loop |
+| `mcp/gmail_triage_ops_mcp.py` | MCP: `finalize_triage` | v0.3.0 · post-unsub SPAM override |
+| `mcp/list_unsubscribe_mcp.py` | MCP: unsub propose/approve | v0.5.0 · watch list after approve |
 | `mcp/gmail_sync.py` | Gmail → Chroma sync | Env: sync lookback/max + URLs |
 | `mcp/gmail_prune.py` | Prune old index docs | `CHROMA_URL` |
 | `mcp/gmail_oauth_refresh.py` | Token refresh | Cron daily |
@@ -13,6 +13,8 @@
 | `scripts/gmail_triage_2h.sh` | Production runner (≤50 today, 25/page) | Cron every 2h |
 | `scripts/gmail_nightly.sh` | Sync + prune only | |
 | `scripts/gmail_e2e_200.sh` | Chunked e2e harness | Default TOTAL 25 |
+| `scripts/test_post_unsub_watch.py` | Offline e2e for post-unsub → SPAM | No Gmail/network |
+| `scripts/e2e_post_unsub_live.py` | Live host e2e (backfill watch + finalize) | Mutates Gmail labels |
 | `openclaw/AGENTS.md` | Agent hard rules (live reference) | |
 | `openclaw/AGENTS.template.md` | Blank-host agent template | |
 | `openclaw/cron.example.json` | Example cron registrations | |
@@ -51,6 +53,11 @@ GMAIL_TRIAGE_MAX_ITEMS=25
 GMAIL_TRIAGE_LABEL_MODE=batch|sequential
 GMAIL_MARK_NEWSLETTER_READ=1
 GMAIL_MARK_SOCIAL_READ=1
+GMAIL_POST_UNSUB_WATCH=1
+GMAIL_POST_UNSUB_GRACE_DAYS=3
+GMAIL_POST_UNSUB_SCOPE=email
+GMAIL_POST_UNSUB_DOMAIN_AFTER_HITS=2
+GMAIL_MARK_POST_UNSUB_SPAM_READ=1
 GMAIL_LIST_RECENT_MAX=50
 GMAIL_TRIAGE_TZ=America/New_York
 GMAIL_SYNC_LOOKBACK_DAYS=2
@@ -59,4 +66,4 @@ GMAIL_SLACK_CHANNEL=          # required for triage/e2e
 GMAIL_ALERT_SLACK_CHANNEL=
 ```
 
-Scripts source `gmail.env` automatically. MCP servers need the same vars in the gateway environment. See [`docs/INSTALL.md`](docs/INSTALL.md) for allowlist (no `approve_unsubscribe` on triage agent) and CLI approve flow.
+Scripts source `gmail.env` automatically. MCP servers need the same vars in the gateway environment. See [`docs/INSTALL.md`](docs/INSTALL.md) for allowlist (no `approve_unsubscribe` on triage agent) and CLI approve / watch flow.

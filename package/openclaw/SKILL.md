@@ -18,6 +18,7 @@ Recurring or on-demand triage of unread Gmail: label, digest, queue unsubs — w
 - **Never** call `list_unsubscribe__approve_unsubscribe` (human uses CLI)
 - One `gmail_triage_ops__finalize_triage` per page; pages **≤25**
 - Every meta `tool_call` must include `id` (e.g. `gmail_triage_ops__finalize_triage`)
+- Finalize may reclassify post-unsub recidivists as SPAM automatically — categorize normally
 - Finalize args: `{message_id, category}` only
 - Slack bullets only for ACTION-REQUIRED (+ URGENT) and NEWSLETTER
 
@@ -46,4 +47,5 @@ See the repository [`docs/INSTALL.md`](../docs/INSTALL.md): env file, OAuth, `op
 ```bash
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --pending
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --approve <pending_id>
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
 ```

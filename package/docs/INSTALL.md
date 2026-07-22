@@ -73,6 +73,7 @@ Include:
 - `list_unsubscribe__propose_unsubscribe`
 - `list_unsubscribe__list_pending_unsubscribes`
 - `list_unsubscribe__list_suppressed_senders`
+- `list_unsubscribe__list_post_unsub_watch` (optional)
 - `gmail__search_emails`, `gmail__read_email`, `gmail__draft_email` (draft only when asked)
 
 **Do not** allowlist on the triage agent:
@@ -80,6 +81,7 @@ Include:
 - `list_unsubscribe__approve_unsubscribe`
 - `list_unsubscribe__reject_unsubscribe` (optional; prefer CLI)
 - `list_unsubscribe__unsuppress_sender`
+- `list_unsubscribe__clear_post_unsub_watch`
 
 Approve/reject via CLI (human gate):
 
@@ -87,6 +89,18 @@ Approve/reject via CLI (human gate):
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --pending
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --approve <pending_id>
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --reject <pending_id>
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
+```
+
+Successful approve adds the sender to a **post-unsub watch**. After `GMAIL_POST_UNSUB_GRACE_DAYS` (default 3), `finalize_triage` forces matching mail to `SPAM` (mark-read) and skips re-queueing unsub.
+
+```bash
+# Offline regression (no Gmail)
+python3 package/scripts/test_post_unsub_watch.py
+
+# Inspect / manage watch list on the host
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --unwatch <email-or-domain>
 ```
 
 ## 5. Agent instructions
@@ -134,6 +148,7 @@ GMAIL_TRIAGE_TOTAL=25 GMAIL_TRIAGE_CHUNK=25 "$OPENCLAW_HOME/bin/gmail_triage_2h.
 - One-click unsub requires **https**, refuses private/link-local hosts, and **does not follow redirects**.
 - Approve re-checks live `List-Unsubscribe` headers against the pending target.
 - Approve takes **pending proposal ids only** (no auto-propose + execute).
+- Post-unsub watch → SPAM is a **label** policy after human approve; it does not execute another unsub.
 
 ## Pitfalls
 

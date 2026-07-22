@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project uses [Semantic Versioning](https://semver.org/).
+
+## [0.2.0] — 2026-07-22
+
+### Added
+- **Post-unsub watch → SPAM** — after a successful `approve_unsubscribe`, the sender is recorded in `$GMAIL_UNSUB_STATE/unsubscribe_watch.json`. Once `GMAIL_POST_UNSUB_GRACE_DAYS` elapses (default **3**), `finalize_triage` forces matching mail to **SPAM**, marks it read by default, and **does not** re-queue unsubscribe.
+- **Domain promotion** — email-scoped watches promote to domain scope after `GMAIL_POST_UNSUB_DOMAIN_AFTER_HITS` distinct From addresses (default **2**); siblings on the same domain count toward promotion without SPAM-labeling until promoted.
+- **CLI / MCP** — `list_post_unsub_watch`, `clear_post_unsub_watch`; CLI `--watch`, `--watch-add FROM [--grace N] [--days-ago N] [--scope email|domain]`, `--unwatch KEY`.
+- **Env knobs** — `GMAIL_POST_UNSUB_WATCH`, `GMAIL_POST_UNSUB_GRACE_DAYS`, `GMAIL_POST_UNSUB_SCOPE`, `GMAIL_POST_UNSUB_DOMAIN_AFTER_HITS`, `GMAIL_MARK_POST_UNSUB_SPAM_READ` (see `.env.example`).
+- **Tests** — offline `scripts/test_post_unsub_watch.py`; optional live host harness `scripts/e2e_post_unsub_live.py`.
+
+### Changed
+- `list_unsubscribe` MCP **v0.5.0**; `gmail_triage_ops` MCP **v0.3.0**.
+- Docs (README, INSTALL, ARCHITECTURE, SECURITY, AGENTS, MANIFEST) document the watch → SPAM path and operator CLI.
+
+### Security
+- Keep `approve_unsubscribe`, `reject_unsubscribe`, `unsuppress_sender`, and `clear_post_unsub_watch` off the triage agent allowlist. Read-only `list_post_unsub_watch` is optional.
+
 ## [0.1.0] — 2026-07-21
 
 First public-ready release of **openclaw-gmail-triage**: stdlib MCP servers, cron scripts, agent templates, and install docs.
@@ -37,3 +56,6 @@ First public-ready release of **openclaw-gmail-triage**: stdlib MCP servers, cro
 - Keep `approve_unsubscribe` off the triage agent allowlist.
 - Bind Chroma/embed/retrieve carefully; treat them as trusted internal services.
 - Never commit `credentials.json`, `gcp-oauth.keys.json`, `secrets.json`, or a filled-in `gmail.env`.
+
+[0.2.0]: https://github.com/k4but0s4n/Gmail-Agent/releases/tag/v0.2.0
+[0.1.0]: https://github.com/k4but0s4n/Gmail-Agent/releases/tag/v0.1.0

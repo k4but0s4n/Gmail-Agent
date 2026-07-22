@@ -34,6 +34,7 @@ flowchart LR
 4. **Finalize** applies `{prefix}/<CAT>` labels (default `OC/`), marks NEWSLETTER/SOCIAL read, queues NEWSLETTER/SPAM for approval.
 5. **Slack** shows counts for all categories; bullets only for ACTION/URGENT and NEWSLETTER.
 6. **Verify** recovers if the model drops the meta-tool `tool_call` `id`.
+7. **Post-unsub watch** — after you approve an unsub, later mail from that sender (past a grace window) is forced to **SPAM** and not re-queued.
 
 ---
 
@@ -46,7 +47,29 @@ flowchart LR
 | FYI | — | — | — |
 | SOCIAL | yes | — | — |
 | NEWSLETTER | yes | propose | yes |
-| SPAM | — | propose | — |
+| SPAM | —† | propose† | — |
+
+† After a successful unsub approve, the sender is watched. Past `GMAIL_POST_UNSUB_GRACE_DAYS` (default 3), matching mail is forced to SPAM, marked read by default, and **not** re-queued. See [Post-unsub watch](#post-unsub-watch).
+
+---
+
+## Post-unsub watch
+
+Newsletters sometimes keep arriving after a “successful” List-Unsubscribe. This package treats that as recidivism:
+
+1. `--approve` records the From address in `unsubscribe_watch.json` (email scope by default).
+2. A grace window (default 3 days) ignores confirmation / “sorry to see you go” mail.
+3. After grace, `finalize_triage` overrides the category to **SPAM**, marks read, skips unsub propose.
+4. After enough distinct From addresses on the same domain, the watch may promote to **domain** scope.
+
+```bash
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --unwatch news@brand.example
+# ops / e2e seed:
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch-add 'News <news@brand.example>' --days-ago 5
+```
+
+Offline test (no Gmail): `python3 package/scripts/test_post_unsub_watch.py`
 
 ---
 
@@ -57,8 +80,9 @@ flowchart LR
 - Finalize is the only batch mutator during triage
 - One-click unsub: HTTPS only, no redirects, private hosts blocked
 - Small models: page size ≤25 + compact finalize + post-batch verify
+- Post-unsub SPAM override is automatic in finalize; clearing a watch is a human CLI/MCP action
 
-See [`CHANGELOG.md`](./CHANGELOG.md) for correctness and security fixes applied before this release.
+See [`CHANGELOG.md`](./CHANGELOG.md) for release notes.
 
 ---
 
@@ -88,6 +112,8 @@ mkdir -p "$OPENCLAW_HOME/bin" "$OPENCLAW_HOME/gmail" "$OPENCLAW_HOME/logs" "$OPE
 
 cp package/mcp/*.py "$OPENCLAW_HOME/bin/"
 cp package/scripts/*.sh "$OPENCLAW_HOME/bin/"
+# optional: e2e harnesses
+cp package/scripts/test_post_unsub_watch.py package/scripts/e2e_post_unsub_live.py "$OPENCLAW_HOME/bin/" 2>/dev/null || true
 chmod +x "$OPENCLAW_HOME/bin/"*.sh
 
 cp package/.env.example "$OPENCLAW_HOME/gmail.env"
@@ -102,6 +128,7 @@ GMAIL_TRIAGE_TOTAL=25 "$OPENCLAW_HOME/bin/gmail_triage_2h.sh"
 
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --pending
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --approve <pending_id>
+python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
 ```
 
 ---
@@ -130,5 +157,7 @@ Example: [`package/openclaw/cron.example.json`](./package/openclaw/cron.example.
 | `GMAIL_CHROMA_COLLECTION` | | Default `gmail_inbox` |
 | `GMAIL_LABEL_PREFIX` | | Default `OC` |
 | `OPENCLAW_HOME` | | Default `~/.openclaw` |
+| `GMAIL_POST_UNSUB_GRACE_DAYS` | | Default `3` — wait before watch→SPAM |
+| `GMAIL_POST_UNSUB_WATCH` | | Default on — set `0` to disable |
 
 Full template: [`package/.env.example`](./package/.env.example). Never commit credentials or a filled-in env file.

@@ -12,7 +12,7 @@ Copy into your OpenClaw agent workspace. Set `GMAIL_AGENT_ID` to match the agent
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
 - **Never** call `list_unsubscribe__approve_unsubscribe` — human approves via CLI
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
-- **Never fabricate**. **No auto-draft**. Skip bootstrap.
+- After a prior successful unsub, finalize may force matching senders to **SPAM**. Categorize normally.- **Never fabricate**. **No auto-draft**. Skip bootstrap.
 - If a tool returns `Validation failed`, **retry once** with a correct `tool_call`. Never claim labels/unsub success without a successful finalize result (`ok: true`).
 
 ## tool_call format (mandatory)

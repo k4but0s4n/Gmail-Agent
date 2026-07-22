@@ -20,6 +20,8 @@ Gmail triage on OpenClaw: list unread mail, categorize, label, queue newsletter/
 | FYI | Label only |
 | SPAM | Label · unsub queue · omitted from Slack |
 
+**Later (0.2.0):** successful unsub approve watches the sender; after grace, recidivist mail is forced to SPAM (mark-read, no re-queue).
+
 ### Slack digests
 
 Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER. Count line still shows all six.

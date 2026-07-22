@@ -51,10 +51,28 @@ URLs and paths come from env via `mcp/_config.py` (`CHROMA_URL`, `GMAIL_EMBED_UR
 | FYI | PREFIX/FYI | no | no | no |
 | SOCIAL | PREFIX/SOCIAL | yes | no | no |
 | NEWSLETTER | PREFIX/NEWSLETTER | yes | yes | yes |
-| SPAM | PREFIX/SPAM | no | yes | no |
+| SPAM | PREFIX/SPAM | no* | yes* | no |
 
 `PREFIX` = `GMAIL_LABEL_PREFIX` (default `OC`).
 
+\* Post-unsub recidivists (sender watched after a successful approve, past grace): forced to **SPAM**, marked read by default (`GMAIL_MARK_POST_UNSUB_SPAM_READ`), and **not** re-queued for unsubscribe.
+
+## Post-unsub watch
+
+```
+approve_unsubscribe (ok)
+        │
+        ▼
+unsubscribe_watch.json  (email scope by default + grace_days)
+        │
+   after grace
+        ▼
+finalize_triage → category=SPAM, mark read, skip propose
+        │
+   optional: promote to domain after N distinct From emails
+```
+
+State file: `$GMAIL_UNSUB_STATE/unsubscribe_watch.json` (default `~/.openclaw/gmail/`).
 ## Failure modes & mitigations
 
 | Failure | Mitigation |

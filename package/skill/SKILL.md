@@ -27,6 +27,7 @@ description: >-
 
 - Never send / delete / trash / archive in triage flows
 - Unsubscribe is propose → human approve only
+- Post-unsub recidivists are forced to SPAM by finalize (past grace); agents categorize normally
 - Finalize is the sole batch mutator during triage
 - Slack bullets: ACTION-REQUIRED (+ URGENT) and NEWSLETTER only
 - Page size ≤25 for small tool-calling models; verify after each page

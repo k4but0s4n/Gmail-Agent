@@ -23,11 +23,28 @@ LOG_FILE = STATE_DIR / "unsubscribe_log.jsonl"
 PENDING_FILE = STATE_DIR / "unsubscribe_pending.json"
 SEEN_FILE = STATE_DIR / "unsubscribe_seen.json"
 SUPPRESSED_FILE = STATE_DIR / "unsubscribe_suppressed_senders.json"
+WATCH_FILE = STATE_DIR / "unsubscribe_watch.json"
 
 AUTO_CATEGORIES = {"NEWSLETTER", "SPAM"}
 ALLOWED_CATEGORIES = {"NEWSLETTER", "SPAM", "FYI", "SOCIAL", "URGENT", "ACTION-REQUIRED", "USER"}
-SERVER_INFO = {"name": "list-unsubscribe", "version": "0.4.0"}
+SERVER_INFO = {"name": "list-unsubscribe", "version": "0.5.0"}
 PROTOCOL_VERSION = "2024-11-05"
+
+# Post-unsub recidivism: after successful approve, watch sender; later mail → SPAM.
+POST_UNSUB_WATCH_ENABLED = os.environ.get("GMAIL_POST_UNSUB_WATCH", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+POST_UNSUB_GRACE_DAYS = max(0, int(os.environ.get("GMAIL_POST_UNSUB_GRACE_DAYS", "3") or "3"))
+POST_UNSUB_SCOPE = (os.environ.get("GMAIL_POST_UNSUB_SCOPE", "email") or "email").strip().lower()
+if POST_UNSUB_SCOPE not in {"email", "domain"}:
+    POST_UNSUB_SCOPE = "email"
+# Promote email-scoped watches to domain after this many distinct From addresses (0=off).
+POST_UNSUB_DOMAIN_AFTER_HITS = max(
+    0, int(os.environ.get("GMAIL_POST_UNSUB_DOMAIN_AFTER_HITS", "2") or "2")
+)
 
 TOOLS = [
     {
@@ -127,6 +144,28 @@ TOOLS = [
                 "key": {
                     "type": "string",
                     "description": "Exact suppressed key (email or domain) from list_suppressed_senders",
+                },
+            },
+            "required": ["key"],
+        },
+    },
+    {
+        "name": "list_post_unsub_watch",
+        "description": (
+            "List senders watched after a successful unsubscribe. After grace_days, "
+            "finalize_triage reclassifies matching mail as SPAM and skips re-propose."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "clear_post_unsub_watch",
+        "description": "Remove a sender email or domain from the post-unsub watch list.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Exact watch key (email or domain) from list_post_unsub_watch",
                 },
             },
             "required": ["key"],
@@ -348,6 +387,273 @@ def dismiss_pending_for_suppressed(pending: dict, key: str, scope: str) -> list[
     return dismissed
 
 
+def load_watch() -> dict:
+    data = load_json(WATCH_FILE, {"entries": {}})
+    if "entries" not in data or not isinstance(data.get("entries"), dict):
+        data = {"entries": {}}
+    return data
+
+
+def save_watch(data: dict) -> None:
+    save_json(WATCH_FILE, data)
+
+
+def _parse_ts(ts: str | None) -> float | None:
+    if not ts:
+        return None
+    text = str(ts).strip()
+    for fmt, n in (("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d %H:%M:%S", 19), ("%Y-%m-%d", 10)):
+        try:
+            return time.mktime(time.strptime(text[:n], fmt))
+        except Exception:
+            continue
+    return None
+
+
+def watch_grace_elapsed(entry: dict, now: float | None = None) -> bool:
+    """True when approved_at + grace_days is in the past (or grace is 0)."""
+    now = time.time() if now is None else now
+    grace = entry.get("grace_days")
+    if grace is None:
+        grace = POST_UNSUB_GRACE_DAYS
+    try:
+        grace_days = max(0, int(grace))
+    except (TypeError, ValueError):
+        grace_days = POST_UNSUB_GRACE_DAYS
+    if grace_days <= 0:
+        return True
+    approved = _parse_ts(entry.get("approved_at") or entry.get("ts"))
+    if approved is None:
+        return False
+    return now >= approved + grace_days * 86400
+
+
+def add_post_unsub_watch(
+    from_header: str,
+    *,
+    pending_id: str | None = None,
+    message_id: str | None = None,
+    method: str | None = None,
+    approved_at: str | None = None,
+    grace_days: int | None = None,
+    scope: str | None = None,
+    approved_at_epoch: float | None = None,
+) -> dict | None:
+    """Record sender after successful unsubscribe. Idempotent per key."""
+    if not POST_UNSUB_WATCH_ENABLED:
+        return None
+    email = extract_sender_email(from_header)
+    if not email:
+        return None
+    scope = (scope or POST_UNSUB_SCOPE or "email").lower()
+    if scope not in {"email", "domain"}:
+        scope = "email"
+    domain = sender_domain(email)
+    key = domain if scope == "domain" and domain else email
+    if not key:
+        return None
+    if grace_days is None:
+        grace_days = POST_UNSUB_GRACE_DAYS
+    if approved_at_epoch is not None:
+        approved_at = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(approved_at_epoch))
+    elif not approved_at:
+        approved_at = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    data = load_watch()
+    entries = data.setdefault("entries", {})
+    prev = entries.get(key) or {}
+    seen_emails = list(prev.get("seen_emails") or [])
+    if email not in seen_emails:
+        seen_emails.append(email)
+    entry = {
+        "key": key,
+        "scope": scope if key == (domain if scope == "domain" else email) else ("domain" if key == domain else "email"),
+        "example_email": email,
+        "example_from": (from_header or "")[:120],
+        "approved_at": approved_at,
+        "grace_days": int(grace_days),
+        "hits": int(prev.get("hits") or 0),
+        "seen_emails": seen_emails[:50],
+        "pending_id": pending_id or prev.get("pending_id"),
+        "message_id": message_id or prev.get("message_id"),
+        "method": method or prev.get("method"),
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    }
+    # Prefer earliest approved_at so grace does not reset on re-approve.
+    prev_approved = _parse_ts(prev.get("approved_at"))
+    new_approved = _parse_ts(approved_at)
+    if prev_approved is not None and (new_approved is None or prev_approved < new_approved):
+        entry["approved_at"] = prev["approved_at"]
+        if prev.get("grace_days") is not None:
+            entry["grace_days"] = prev["grace_days"]
+    entries[key] = entry
+    save_watch(data)
+    return entry
+
+
+def match_post_unsub_watch(
+    from_header: str,
+    *,
+    require_past_grace: bool = True,
+    now: float | None = None,
+    watch: dict | None = None,
+) -> tuple[bool, dict | None]:
+    """Return (matched?, entry) for exact email- or domain-scoped watch keys.
+
+    Same-domain siblings of an email-scoped watch do not match here (they only
+    count toward promotion via record_post_unsub_hit).
+    """
+    if not POST_UNSUB_WATCH_ENABLED:
+        return False, None
+    email = extract_sender_email(from_header)
+    if not email:
+        return False, None
+    domain = sender_domain(email)
+    watch = watch if watch is not None else load_watch()
+    entries = watch.get("entries") or {}
+    candidates: list[dict] = []
+    email_entry = entries.get(email)
+    if email_entry and (email_entry.get("scope") or "email") == "email":
+        candidates.append(email_entry)
+    if domain:
+        domain_entry = entries.get(domain)
+        if domain_entry and (domain_entry.get("scope") or "domain") in {"domain", None}:
+            candidates.append(domain_entry)
+    for entry in candidates:
+        if require_past_grace and not watch_grace_elapsed(entry, now=now):
+            continue
+        return True, entry
+    return False, None
+
+
+def _email_watches_for_domain(domain: str, entries: dict) -> list[dict]:
+    if not domain:
+        return []
+    out = []
+    for key, entry in entries.items():
+        if (entry.get("scope") or "email") != "email":
+            continue
+        edom = sender_domain(entry.get("key") or entry.get("example_email") or key)
+        if edom == domain:
+            out.append(entry)
+    return out
+
+
+def record_post_unsub_hit(from_header: str, entry: dict | None = None) -> dict | None:
+    """Bump recidivist hit count; may promote email-scope → domain after N distinct emails.
+
+    Same-domain siblings (e.g. promo@brand when news@brand is watched) count toward
+    promotion but are not SPAM-overridden until the watch is domain-scoped.
+    """
+    if not POST_UNSUB_WATCH_ENABLED:
+        return None
+    email = extract_sender_email(from_header)
+    if not email:
+        return None
+    domain = sender_domain(email)
+    data = load_watch()
+    entries = data.setdefault("entries", {})
+
+    if entry is None:
+        _matched, found = match_post_unsub_watch(from_header, require_past_grace=False, watch=data)
+        if found:
+            entry = found
+        elif domain:
+            siblings = _email_watches_for_domain(domain, entries)
+            past = [s for s in siblings if watch_grace_elapsed(s)]
+            entry = (past or siblings or [None])[0]
+    if not entry:
+        return None
+
+    key = entry.get("key")
+    if not key or key not in entries:
+        _matched, found = match_post_unsub_watch(from_header, require_past_grace=False, watch=data)
+        if not found and domain:
+            siblings = _email_watches_for_domain(domain, entries)
+            found = (siblings or [None])[0]
+        if not found:
+            return None
+        entry = found
+        key = entry.get("key")
+        if not key or key not in entries:
+            return None
+
+    cur = dict(entries.get(key) or entry)
+    seen_emails = list(cur.get("seen_emails") or [])
+    if email not in seen_emails:
+        seen_emails.append(email)
+    cur["seen_emails"] = seen_emails[:50]
+    cur["hits"] = int(cur.get("hits") or 0) + 1
+    cur["last_hit_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    cur["last_hit_from"] = (from_header or "")[:120]
+
+    promote = (
+        POST_UNSUB_DOMAIN_AFTER_HITS > 0
+        and (cur.get("scope") or "email") == "email"
+        and domain
+        and len(seen_emails) >= POST_UNSUB_DOMAIN_AFTER_HITS
+    )
+    if promote:
+        old_key = key
+        cur["key"] = domain
+        cur["scope"] = "domain"
+        cur["promoted_at"] = cur["last_hit_at"]
+        entries.pop(old_key, None)
+        existing_dom = entries.get(domain) or {}
+        if existing_dom:
+            cur["hits"] = int(existing_dom.get("hits") or 0) + int(cur.get("hits") or 0)
+            merged = list(existing_dom.get("seen_emails") or [])
+            for e in seen_emails:
+                if e not in merged:
+                    merged.append(e)
+            cur["seen_emails"] = merged[:50]
+            prev_a = _parse_ts(existing_dom.get("approved_at"))
+            cur_a = _parse_ts(cur.get("approved_at"))
+            if prev_a is not None and (cur_a is None or prev_a < cur_a):
+                cur["approved_at"] = existing_dom["approved_at"]
+        entries[domain] = cur
+    else:
+        entries[key] = cur
+    save_watch(data)
+    return cur
+
+
+def list_post_unsub_watch() -> dict:
+    data = load_watch()
+    entries = list((data.get("entries") or {}).values())
+    now = time.time()
+    enriched = []
+    for e in entries:
+        row = dict(e)
+        row["past_grace"] = watch_grace_elapsed(row, now=now)
+        enriched.append(row)
+    enriched.sort(key=lambda x: x.get("approved_at") or x.get("ts") or "", reverse=True)
+    return {
+        "count": len(enriched),
+        "enabled": POST_UNSUB_WATCH_ENABLED,
+        "grace_days_default": POST_UNSUB_GRACE_DAYS,
+        "entries": enriched,
+    }
+
+
+def clear_post_unsub_watch(key: str) -> dict:
+    key = (key or "").strip().lower()
+    if not key:
+        return {"ok": False, "error": "key required"}
+    data = load_watch()
+    entries = data.get("entries") or {}
+    if key not in entries:
+        return {"ok": False, "error": f"not watched: {key}", "keys": list(entries.keys())}
+    removed = entries.pop(key)
+    data["entries"] = entries
+    save_watch(data)
+    append_jsonl(
+        LOG_FILE,
+        {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": "clear_watch", "key": key},
+    )
+    return {"ok": True, "removed": removed}
+
+
 def parse_list_unsubscribe(value: str) -> list[str]:
     if not value:
         return []
@@ -540,6 +846,7 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
 
     Skip (no new queue entry) when:
       - sender suppressed (unless force)
+      - sender on post-unsub watch past grace (unless force)
       - already unsubscribed (target in seen)
       - already in queue for this message_id (pending/needs_manual/blocked)
       - same proposal id already done/rejected
@@ -566,6 +873,27 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
             "executed": False,
             "first_seen": False,
             "note": f"Skipped — sender suppressed ({matched}). Use force=true or unsuppress_sender to allow again.",
+        }
+
+    # Already unsubscribed this List-Unsubscribe target (approve recorded it in seen).
+    # Also skip re-propose when sender is on post-unsub watch past grace (recidivist → SPAM path).
+    watched, watch_entry = match_post_unsub_watch(from_header, require_past_grace=True)
+    if watched and not force:
+        return {
+            "ok": True,
+            "proposed": False,
+            "skipped": True,
+            "reason": "post_unsub_watch",
+            "watch_key": (watch_entry or {}).get("key"),
+            "from": from_header[:120],
+            "subject": subject,
+            "message_id": message_id,
+            "executed": False,
+            "first_seen": False,
+            "note": (
+                "Skipped — sender still mailing after successful unsubscribe "
+                f"({(watch_entry or {}).get('key')}); triage should label SPAM."
+            ),
         }
 
     # Already unsubscribed this List-Unsubscribe target (approve recorded it in seen).
@@ -885,6 +1213,13 @@ def approve_unsubscribe(ids: list[str]) -> dict:
             item["status"] = "done"
             item["result"] = {"status": "already_done", "key": key}
             pending["items"][pid] = item
+            watch_entry = add_post_unsub_watch(
+                item.get("from") or "",
+                pending_id=pid,
+                message_id=item.get("message_id"),
+                method=method,
+                approved_at=item.get("approved_ts") or time.strftime("%Y-%m-%dT%H:%M:%S"),
+            )
             results.append({
                 "id": pid,
                 "input": token,
@@ -892,6 +1227,7 @@ def approve_unsubscribe(ids: list[str]) -> dict:
                 "status": "already_done",
                 "method": method,
                 "message_id": item.get("message_id"),
+                "watch": watch_entry,
             })
             continue
 
@@ -908,6 +1244,7 @@ def approve_unsubscribe(ids: list[str]) -> dict:
         item["result"] = action
         item["approved_ts"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         pending["items"][pid] = item
+        watch_entry = None
         if ok:
             seen[key] = {
                 "ts": item["approved_ts"],
@@ -915,6 +1252,13 @@ def approve_unsubscribe(ids: list[str]) -> dict:
                 "pending_id": pid,
                 "method": method,
             }
+            watch_entry = add_post_unsub_watch(
+                item.get("from") or "",
+                pending_id=pid,
+                message_id=item.get("message_id"),
+                method=method,
+                approved_at=item["approved_ts"],
+            )
         results.append({
             "id": pid,
             "input": token,
@@ -922,6 +1266,7 @@ def approve_unsubscribe(ids: list[str]) -> dict:
             "method": method,
             "action": action,
             "message_id": item.get("message_id"),
+            "watch": watch_entry,
         })
         append_jsonl(
             LOG_FILE,
@@ -933,6 +1278,7 @@ def approve_unsubscribe(ids: list[str]) -> dict:
                 "ok": ok,
                 "method": method,
                 "action": action,
+                "watch_key": (watch_entry or {}).get("key") if watch_entry else None,
             },
         )
 
@@ -1049,6 +1395,10 @@ def call_tool(name: str, args: dict):
         return list_suppressed_senders()
     if name == "unsuppress_sender":
         return unsuppress_sender(str(args.get("key", "")))
+    if name == "list_post_unsub_watch":
+        return list_post_unsub_watch()
+    if name == "clear_post_unsub_watch":
+        return clear_post_unsub_watch(str(args.get("key", "")))
     # legacy name → refuse live
     if name == "unsubscribe_message":
         return {
@@ -1177,9 +1527,49 @@ def main():
         if cmd == "--unsuppress":
             print(json.dumps(unsuppress_sender(sys.argv[2] if len(sys.argv) > 2 else ""), indent=2))
             return
+        if cmd == "--watch":
+            print(json.dumps(list_post_unsub_watch(), indent=2))
+            return
+        if cmd == "--unwatch":
+            print(json.dumps(clear_post_unsub_watch(sys.argv[2] if len(sys.argv) > 2 else ""), indent=2))
+            return
+        if cmd == "--watch-add":
+            # --watch-add FROM [--grace N] [--days-ago N] [--scope email|domain]
+            args = sys.argv[2:]
+            grace = POST_UNSUB_GRACE_DAYS
+            days_ago = 0
+            scope = POST_UNSUB_SCOPE
+            positional = []
+            i = 0
+            while i < len(args):
+                if args[i] == "--grace" and i + 1 < len(args):
+                    grace = int(args[i + 1])
+                    i += 2
+                    continue
+                if args[i] == "--days-ago" and i + 1 < len(args):
+                    days_ago = float(args[i + 1])
+                    i += 2
+                    continue
+                if args[i] == "--scope" and i + 1 < len(args):
+                    scope = args[i + 1]
+                    i += 2
+                    continue
+                positional.append(args[i])
+                i += 1
+            from_hdr = positional[0] if positional else ""
+            epoch = time.time() - max(0.0, days_ago) * 86400
+            entry = add_post_unsub_watch(
+                from_hdr,
+                grace_days=grace,
+                scope=scope,
+                approved_at_epoch=epoch,
+            )
+            print(json.dumps({"ok": bool(entry), "entry": entry}, indent=2))
+            return
         print(
             "usage: --propose MSG CAT | --pending | --approve ID... | "
-            "--reject ID... [--once] [--email] | --suppressed | --unsuppress KEY",
+            "--reject ID... [--once] [--email] | --suppressed | --unsuppress KEY | "
+            "--watch | --unwatch KEY | --watch-add FROM [--grace N] [--days-ago N] [--scope email|domain]",
             file=sys.stderr,
         )
         sys.exit(2)

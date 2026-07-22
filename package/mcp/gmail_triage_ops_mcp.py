@@ -42,6 +42,13 @@ MAX_ITEMS = max(1, min(int(os.environ.get("GMAIL_TRIAGE_MAX_ITEMS", "25")), 500)
 # GMAIL_MARK_NEWSLETTER_READ=0 / GMAIL_MARK_SOCIAL_READ=0
 MARK_NEWSLETTER_READ = os.environ.get("GMAIL_MARK_NEWSLETTER_READ", "1").strip().lower() in {"1", "true", "yes", "on"}
 MARK_SOCIAL_READ = os.environ.get("GMAIL_MARK_SOCIAL_READ", "1").strip().lower() in {"1", "true", "yes", "on"}
+# Post-unsub recidivists forced to SPAM are marked read by default.
+MARK_POST_UNSUB_SPAM_READ = os.environ.get("GMAIL_MARK_POST_UNSUB_SPAM_READ", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 MARK_READ_CATS = set()
 if MARK_NEWSLETTER_READ:
     MARK_READ_CATS.add("NEWSLETTER")
@@ -55,7 +62,7 @@ TRIAGE_SEEN = Path(
 ALLOWED = {"URGENT", "ACTION-REQUIRED", "FYI", "SOCIAL", "NEWSLETTER", "SPAM"}
 LABEL_PREFIX = cfg.label_prefix()
 OC_LABELS = {c: cfg.label_name(c) for c in ALLOWED}
-SERVER_INFO = {"name": "gmail-triage-ops", "version": "0.2.0"}
+SERVER_INFO = {"name": "gmail-triage-ops", "version": "0.3.0"}
 PROTOCOL_VERSION = "2024-11-05"
 
 TOOLS = [
@@ -66,6 +73,8 @@ TOOLS = [
             f"Applies {LABEL_PREFIX}/<CAT> labels, marks NEWSLETTER/SOCIAL read, and queues "
             "NEWSLETTER/SPAM into the unsubscribe approval pipeline (propose only — "
             "never executes unsubscribe; SOCIAL is never auto-queued). "
+            "Senders successfully unsubscribed earlier are watched: after a grace window, "
+            "matching mail is forced to SPAM (mark-read) and not re-queued for unsub. "
             "Do not call per-message label or propose tools during triage."
         ),
         "inputSchema": {
@@ -214,16 +223,18 @@ def apply_label(message_id: str, label_id: str, remove_unread: bool = False) -> 
 
 
 def apply_labels_batch(items: list, label_ids: dict[str, str]) -> list:
-    """Group by category and call messages.batchModify (chunked). Regress via LABEL_MODE=sequential."""
-    by_cat: dict[str, list[str]] = {}
+    """Group by (category, mark_read) and call messages.batchModify (chunked)."""
+    # key: (category, mark_read_bool) -> message_ids
+    groups: dict[tuple[str, bool], list[str]] = {}
     for item in items:
-        by_cat.setdefault(item["category"], []).append(item["message_id"])
+        cat = item["category"]
+        mark_read = bool(item.get("force_mark_read")) or cat in MARK_READ_CATS
+        groups.setdefault((cat, mark_read), []).append(item["message_id"])
 
     results = []
-    for cat, mids in by_cat.items():
+    for (cat, mark_read), mids in groups.items():
         label_id = label_ids[cat]
-        remove = ["UNREAD"] if cat in MARK_READ_CATS else []
-        # de-dupe while preserving order
+        remove = ["UNREAD"] if mark_read else []
         seen = set()
         uniq = []
         for mid in mids:
@@ -268,6 +279,90 @@ def apply_labels_batch(items: list, label_ids: dict[str, str]) -> list:
                     )
     return results
 
+
+def apply_post_unsub_overrides(items: list, unsub, *, record_hits: bool = True) -> list:
+    """Force SPAM for senders on post-unsub watch past grace. Mutates items in place.
+
+    Returns list of override records for the finalize summary. Same-domain siblings of
+    an email-scoped watch count toward domain promotion; a second pass re-matches after
+    promotion so later items in the same batch can also override.
+    """
+    overrides = []
+    if not getattr(unsub, "POST_UNSUB_WATCH_ENABLED", True):
+        return overrides
+    match_fn = getattr(unsub, "match_post_unsub_watch", None)
+    hit_fn = getattr(unsub, "record_post_unsub_hit", None)
+    if not callable(match_fn):
+        return overrides
+
+    def _ensure_from(item: dict) -> str:
+        from_hdr = item.get("from") or ""
+        if from_hdr or not item.get("message_id"):
+            return from_hdr
+        try:
+            meta = unsub.fetch_headers(item["message_id"])
+            from_hdr = (meta.get("from") or "")[:120]
+            if from_hdr:
+                item["from"] = from_hdr
+        except Exception as exc:
+            log(f"post-unsub From fetch failed for {item.get('message_id')}: {exc}")
+        return from_hdr
+
+    def _override_one(item: dict, entry: dict, from_hdr: str) -> dict:
+        original = item["category"]
+        item["category"] = "SPAM"
+        item["post_unsub_override"] = True
+        item["post_unsub_watch_key"] = entry.get("key")
+        item["original_category"] = original
+        if MARK_POST_UNSUB_SPAM_READ:
+            item["force_mark_read"] = True
+        hit_entry = None
+        if record_hits and callable(hit_fn):
+            try:
+                hit_entry = hit_fn(from_hdr, entry)
+            except Exception as exc:
+                log(f"post-unsub hit record failed: {exc}")
+        return {
+            "message_id": item["message_id"],
+            "from": from_hdr[:120],
+            "original_category": original,
+            "category": "SPAM",
+            "watch_key": (hit_entry or entry).get("key"),
+            "hits": (hit_entry or entry).get("hits"),
+            "marked_read": bool(item.get("force_mark_read")),
+        }
+
+    # Pass 1: exact email / domain matches
+    pending_sibling_note: list[tuple[dict, str]] = []
+    for item in items:
+        if item.get("post_unsub_override"):
+            continue
+        from_hdr = _ensure_from(item)
+        matched, entry = match_fn(from_hdr, require_past_grace=True)
+        if matched and entry:
+            overrides.append(_override_one(item, entry, from_hdr))
+        elif from_hdr and record_hits and callable(hit_fn):
+            pending_sibling_note.append((item, from_hdr))
+
+    # Sibling notes may promote email → domain for later / same-batch items
+    for item, from_hdr in pending_sibling_note:
+        if item.get("post_unsub_override"):
+            continue
+        try:
+            hit_fn(from_hdr)
+        except Exception as exc:
+            log(f"post-unsub sibling note failed: {exc}")
+
+    # Pass 2: re-match after possible promotion
+    for item in items:
+        if item.get("post_unsub_override"):
+            continue
+        from_hdr = item.get("from") or _ensure_from(item)
+        matched, entry = match_fn(from_hdr, require_past_grace=True)
+        if matched and entry:
+            overrides.append(_override_one(item, entry, from_hdr))
+
+    return overrides
 
 
 def mark_triage_seen(items: list, label_results: list) -> int:
@@ -342,9 +437,10 @@ def finalize_triage(items: list) -> dict:
             "total": len(normalized),
         }
 
+    unsub = load_unsub_module()
+    post_unsub_overrides = apply_post_unsub_overrides(normalized, unsub)
 
     label_ids = ensure_oc_labels()
-    unsub = load_unsub_module()
 
     label_results = []
     unsub_results = []
@@ -355,10 +451,11 @@ def finalize_triage(items: list) -> dict:
     mode = LABEL_MODE if LABEL_MODE in {"batch", "sequential"} else "batch"
     if mode == "sequential":
         for item in normalized:
+            remove_unread = item["category"] in MARK_READ_CATS or bool(item.get("force_mark_read"))
             lr = apply_label(
                 item["message_id"],
                 label_ids[item["category"]],
-                remove_unread=(item["category"] in MARK_READ_CATS),
+                remove_unread=remove_unread,
             )
             lr["category"] = item["category"]
             label_results.append(lr)
@@ -367,6 +464,22 @@ def finalize_triage(items: list) -> dict:
 
     for item in normalized:
         cat = item["category"]
+        # Post-unsub overrides: label SPAM but do not re-queue unsubscribe.
+        if item.get("post_unsub_override"):
+            unsub_results.append(
+                {
+                    "message_id": item["message_id"],
+                    "category": cat,
+                    "from": item["from"],
+                    "subject": item["subject"],
+                    "proposed": False,
+                    "skipped": True,
+                    "reason": "post_unsub_watch",
+                    "suppressed_key": item.get("post_unsub_watch_key"),
+                    "note": "Post-unsub recidivist — labeled SPAM, unsub not re-queued",
+                }
+            )
+            continue
         if cat in {"NEWSLETTER", "SPAM"}:
             # Hand off to unsubscribe approval pipeline (propose only).
             ur = unsub.propose_unsubscribe(item["message_id"], cat)
@@ -382,7 +495,7 @@ def finalize_triage(items: list) -> dict:
                     "status": ur.get("status"),
                     "method": ur.get("method"),
                     "reason": ur.get("reason") or ur.get("note"),
-                    "suppressed_key": ur.get("suppressed_key"),
+                    "suppressed_key": ur.get("suppressed_key") or ur.get("watch_key"),
                 }
             )
 
@@ -401,9 +514,11 @@ def finalize_triage(items: list) -> dict:
         "label_mode": mode,
         "triage_seen_marked": seen_marked,
         "labels_applied": label_ok,
-        "newsletters_marked_read": marked_read,  # NEWSLETTER + SOCIAL when enabled
+        "newsletters_marked_read": marked_read,  # NEWSLETTER + SOCIAL + post-unsub SPAM when enabled
         "marked_read": marked_read,
         "label_failures": label_fail,
+        "post_unsub_overrides": post_unsub_overrides,
+        "post_unsub_override_count": len(post_unsub_overrides),
         "unsub_queued": [
             {"id": u.get("id"), "category": u["category"], "from": u["from"], "subject": u["subject"], "method": u.get("method")}
             for u in queued
@@ -415,6 +530,7 @@ def finalize_triage(items: list) -> dict:
         "parse_errors": errors,
         "note": (
             "Labels applied. NEWSLETTER/SPAM handed to unsubscribe approval queue. "
+            "Post-unsub watch past grace → SPAM (no re-queue). "
             "SOCIAL labeled only (not auto-unsub). Nothing was unsubscribed. "
             "User must approve pending ids."
         ),
@@ -517,6 +633,40 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--finalize-json":
         payload = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
         print(json.dumps(finalize_triage(payload.get("items") or payload), indent=2))
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "--preview-post-unsub-json":
+        # Dry path: apply watch overrides only (no Gmail mutate). For e2e/unit.
+        payload = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+        raw_items = payload.get("items") or payload
+        normalized = []
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            mid = str(raw.get("message_id") or "").strip()
+            cat = str(raw.get("category") or "").strip().upper()
+            if not mid or cat not in ALLOWED:
+                continue
+            normalized.append(
+                {
+                    "message_id": mid,
+                    "category": cat,
+                    "from": str(raw.get("from") or "")[:120],
+                    "subject": str(raw.get("subject") or "")[:160],
+                }
+            )
+        unsub = load_unsub_module()
+        overrides = apply_post_unsub_overrides(normalized, unsub, record_hits=False)
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "items": normalized,
+                    "post_unsub_overrides": overrides,
+                    "post_unsub_override_count": len(overrides),
+                },
+                indent=2,
+            )
+        )
         return
     log(f"gmail_triage_ops MCP starting (protocol {PROTOCOL_VERSION})")
     stdin = sys.stdin.buffer

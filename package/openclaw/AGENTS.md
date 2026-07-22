@@ -10,7 +10,7 @@
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
 - **Never** call `list_unsubscribe__approve_unsubscribe` or `reject_unsubscribe` — human uses CLI
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
-- **Never fabricate**. **No auto-draft**. Skip bootstrap.
+- After a prior successful unsub, `finalize_triage` may force matching senders to **SPAM** (past grace). Categorize normally; do not special-case.- **Never fabricate**. **No auto-draft**. Skip bootstrap.
 - If a tool returns `Validation failed`, **retry once** with a correct `tool_call`. Never claim labels/unsub success without a successful finalize result (`ok: true`).
 
 ## tool_call format (mandatory)
@@ -53,7 +53,7 @@ Borderline: LinkedIn *activity* → SOCIAL; LinkedIn *job/marketing digest* → 
 3. **Must** call `finalize_triage` once via `tool_call` with `id: "gmail_triage_ops__finalize_triage"` and compact items (`message_id`, `category` only)
    - Applies `OC/<CAT>`
    - Queues NEWSLETTER/SPAM for unsub approval (SOCIAL is **not** auto-queued)
-   - **Marks NEWSLETTER and SOCIAL as read** (removes UNREAD)
+   - May override post-unsub recidivists to SPAM (mark-read, no re-queue)   - **Marks NEWSLETTER and SOCIAL as read** (removes UNREAD)
 4. Slack **only after** finalize returns `ok: true` — use finalize counts; never invent ids
 
 Large batches: pages of **≤25**, one finalize per page.
