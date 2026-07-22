@@ -8,10 +8,15 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **Slack tool_call leak** — verify fails (with `retry: true`) when the model echoes `tool_call` YAML as chat text instead of invoking tools; runners retry the batch once on a new session key. Previously `listed_count: 0` was treated as an empty inbox and `--deliver` posted the leak to Slack.
 - **Post-unsub override guards** — no hit bumps during grace; no double-count on same-batch domain promote; never override URGENT/ACTION-REQUIRED; sibling promotion only from NEWSLETTER/SPAM; surface `missing_from` when From cannot be resolved.
 - **Reclassify stacks OC labels** — `finalize_triage` now removes other `PREFIX/*` category labels when applying a new one (e.g. ACTION-REQUIRED → SPAM replaces, does not stack). SPAM is marked read by default (`GMAIL_MARK_SPAM_READ=1`).
 
+### Changed
+- **Triage runners** (`gmail_triage_2h.sh`, `gmail_e2e_200.sh`) — no agent `--deliver`; runner posts `slack_text` from verify only after success.
+
 ### Added
+- **Verify `slack_text`** — `gmail_e2e_verify_batch.py` builds the Slack digest; regression `scripts/test_verify_tool_leak.py`.
 - **Commands doc** — [`package/docs/COMMANDS.md`](package/docs/COMMANDS.md): imperative operator phrases with `[placeholders]` (e.g. *List pending to unsubscribe*, *Unsuppress this sender/domain `[…]`*) plus CLI invocations; linked from README / INSTALL / MANIFEST.
 
 ## [0.2.0] — 2026-07-22

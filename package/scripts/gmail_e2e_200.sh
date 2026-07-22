@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Chunked E2E over unread, not-yet-labeled, not-yet-seen mail.
 # With skip_seen=true, keep offset=0 every page.
+# No --deliver; runner posts Slack only after verify succeeds.
 set -euo pipefail
 
 OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
@@ -21,10 +22,33 @@ AGENT_ID="${GMAIL_AGENT_ID:-gmail-triage}"
 OPENCLAW="${OPENCLAW_BIN_CMD:-$(command -v openclaw || echo "$HOME/.npm-global/bin/openclaw")}"
 BIN_DIR="${OPENCLAW_BIN:-$OPENCLAW_HOME/bin}"
 VERIFY="${GMAIL_VERIFY_SCRIPT:-$BIN_DIR/gmail_e2e_verify_batch.py}"
+SECRETS="${OPENCLAW_SECRETS:-$OPENCLAW_HOME/secrets.json}"
 RUN_ID="e2e-${TOTAL}c${CHUNK}-$(date +%Y%m%d-%H%M%S)"
 LOG_DIR="$OPENCLAW_HOME/logs"
 mkdir -p "$LOG_DIR"
 MASTER_LOG="$LOG_DIR/${RUN_ID}.log"
+
+slack_post() {
+  local channel="$1"
+  local text="$2"
+  [[ -n "$channel" ]] || return 0
+  OPENCLAW_SECRETS="$SECRETS" /usr/bin/python3 - "$channel" "$text" <<'PY' || true
+import json, os, sys, urllib.request
+from pathlib import Path
+channel, text = sys.argv[1], sys.argv[2]
+secrets = Path(os.environ["OPENCLAW_SECRETS"])
+token = json.loads(secrets.read_text())["providers"]["slack"]["botToken"]
+req = urllib.request.Request(
+    "https://slack.com/api/chat.postMessage",
+    data=json.dumps({"channel": channel, "text": text}).encode(),
+    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
+    method="POST",
+)
+with urllib.request.urlopen(req, timeout=20) as r:
+    data = json.loads(r.read().decode())
+print("slack_ok" if data.get("ok") else f"slack_err {data}", file=sys.stderr)
+PY
+}
 
 echo "run=$RUN_ID total=$TOTAL chunk=$CHUNK slack=$GMAIL_CHANNEL agent=$AGENT_ID unread_only+skip_labeled+skip_seen offset=0" | tee "$MASTER_LOG"
 START_ALL=$(date +%s)
@@ -37,54 +61,60 @@ while [[ "$PROCESSED" -lt "$TOTAL" ]]; do
   REMAIN=$((TOTAL - PROCESSED))
   if [[ "$REMAIN" -lt "$LIMIT" ]]; then LIMIT=$REMAIN; fi
   OFFSET=0
-  SESSION_KEY="${RUN_ID}-b${BATCH}-o${PROCESSED}"
-  LOG="$LOG_DIR/${SESSION_KEY}.log"
-  MSG="Chunked triage batch ${BATCH}: page offset=${OFFSET} limit=${LIMIT} (target up to ${TOTAL} eligible; processed≈${PROCESSED}).
+  ATTEMPT=1
+  MAX_ATTEMPT=2
+  while [[ "$ATTEMPT" -le "$MAX_ATTEMPT" ]]; do
+    if [[ "$ATTEMPT" -gt 1 ]]; then
+      SESSION_KEY="${RUN_ID}-b${BATCH}-o${PROCESSED}-retry${ATTEMPT}"
+      echo "[$(date --iso-8601=seconds)] RETRY attempt=$ATTEMPT session=$SESSION_KEY" | tee -a "$MASTER_LOG"
+    else
+      SESSION_KEY="${RUN_ID}-b${BATCH}-o${PROCESSED}"
+    fi
+    LOG="$LOG_DIR/${SESSION_KEY}.log"
+    MSG="Chunked triage batch ${BATCH}: page offset=${OFFSET} limit=${LIMIT} (target up to ${TOTAL} eligible; processed≈${PROCESSED}).
 SESSION_KEY=${SESSION_KEY}
-1) Call tool_call id=email_query__list_recent ONCE with args limit=${LIMIT} offset=${OFFSET} unread_only=true skip_labeled=true skip_seen=true.
-2) If zero hits, Slack one line including session:\`${SESSION_KEY}\` and stop tools.
+1) Call tool_call id=email_query__list_recent ONCE with args limit=${LIMIT} offset=${OFFSET} unread_only=true skip_labeled=true skip_seen=true. NEVER echo tool_call as chat text.
+2) If zero hits, stop tools (runner posts Slack).
 3) Categorize EVERY hit using ONLY: URGENT, ACTION-REQUIRED, FYI, SOCIAL, NEWSLETTER, SPAM (see AGENTS.md defs).
-4) Call tool_call with id=gmail_triage_ops__finalize_triage ONCE. args.items = compact list of {message_id, category} ONLY (omit from/subject). ALWAYS include id.
+4) Call tool_call with id=gmail_triage_ops__finalize_triage ONCE. args.items = compact list of {message_id, category} ONLY. ALWAYS include id.
 5) If tool returns Validation failed, retry finalize once with id set. NEVER claim success without finalize ok:true.
-6) Slack MUST follow AGENTS.md layout (KEEP SHORT) using finalize counts:
-   - First line scope + counts for ALL categories
-   - Next line exactly: session: \`${SESSION_KEY}\`
-   - Digest bullets ONLY for ACTION-REQUIRED (and URGENT if any) + NEWSLETTER
-   - Do NOT list FYI/SOCIAL/SPAM in Slack (still finalize/label them; SOCIAL marked read)
-   - Every shown bullet includes \`message_id\`
-   - Mention marked_read / unsub_queued from finalize
+6) Do NOT post to Slack — the runner posts after verify.
 Do NOT call per-message label/propose tools. Do NOT approve unsubs. Do NOT draft. Do NOT fetch other offsets.
 Skip bootstrap. Never fabricate. Never browser. NEVER markdown tables."
 
-  echo "[$(date --iso-8601=seconds)] START batch=$BATCH processed=$PROCESSED limit=$LIMIT session=$SESSION_KEY" | tee -a "$MASTER_LOG"
-  set +e
-  timeout 900 "$OPENCLAW" agent --agent "$AGENT_ID" --session-key "$SESSION_KEY" \
-    --message "$MSG" \
-    --timeout 900 \
-    --deliver --channel slack --reply-channel slack --reply-to "$GMAIL_CHANNEL" \
-    2>&1 | tee "$LOG" | tee -a "$MASTER_LOG"
-  RC=${PIPESTATUS[0]}
-  set -e
-  echo "[$(date --iso-8601=seconds)] END batch=$BATCH rc=$RC" | tee -a "$MASTER_LOG"
-  if [[ "$RC" -ne 0 ]]; then FAIL=1; fi
+    echo "[$(date --iso-8601=seconds)] START batch=$BATCH processed=$PROCESSED limit=$LIMIT session=$SESSION_KEY" | tee -a "$MASTER_LOG"
+    set +e
+    timeout 900 "$OPENCLAW" agent --agent "$AGENT_ID" --session-key "$SESSION_KEY" \
+      --message "$MSG" \
+      --timeout 900 \
+      2>&1 | tee "$LOG" | tee -a "$MASTER_LOG"
+    RC=${PIPESTATUS[0]}
+    set -e
+    echo "[$(date --iso-8601=seconds)] END batch=$BATCH rc=$RC" | tee -a "$MASTER_LOG"
 
-  set +e
-  VERIFY_OUT=$(python3 "$VERIFY" --session-key "$SESSION_KEY" 2>&1)
-  VRC=$?
-  set -e
-  echo "$VERIFY_OUT" | tee -a "$MASTER_LOG"
-  if [[ "$VRC" -ne 0 ]]; then
-    echo "[$(date --iso-8601=seconds)] VERIFY FAIL batch=$BATCH" | tee -a "$MASTER_LOG"
-    FAIL=1
-  else
-    echo "[$(date --iso-8601=seconds)] VERIFY OK batch=$BATCH" | tee -a "$MASTER_LOG"
-  fi
+    set +e
+    VERIFY_OUT=$(python3 "$VERIFY" --session-key "$SESSION_KEY" 2>&1)
+    VRC=$?
+    set -e
+    echo "$VERIFY_OUT" | tee -a "$MASTER_LOG"
+    if [[ "$VRC" -eq 0 ]]; then
+      echo "[$(date --iso-8601=seconds)] VERIFY OK batch=$BATCH" | tee -a "$MASTER_LOG"
+      SLACK_TEXT=$(printf '%s' "$VERIFY_OUT" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("slack_text") or "")' 2>/dev/null || true)
+      if [[ -n "$SLACK_TEXT" ]]; then
+        slack_post "$GMAIL_CHANNEL" "$SLACK_TEXT"
+      fi
+      break
+    fi
+    echo "[$(date --iso-8601=seconds)] VERIFY FAIL batch=$BATCH attempt=$ATTEMPT" | tee -a "$MASTER_LOG"
+    if [[ "$ATTEMPT" -ge "$MAX_ATTEMPT" ]]; then
+      FAIL=1
+      break
+    fi
+    ATTEMPT=$((ATTEMPT + 1))
+  done
 
-  if echo "$VERIFY_OUT" | grep -q '"listed_count": 0'; then
-    echo "[$(date --iso-8601=seconds)] STOP early — no more eligible mail" | tee -a "$MASTER_LOG"
-    break
-  fi
-  if grep -qE "eligible_total=0|No emails matched filters|page is empty|Listed 0 email" "$LOG" 2>/dev/null; then
+  EMPTY=$(printf '%s' "${VERIFY_OUT:-}" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("1" if d.get("ok") and int(d.get("listed_count") or 0)==0 else "0")' 2>/dev/null || echo 0)
+  if [[ "$EMPTY" == "1" ]]; then
     echo "[$(date --iso-8601=seconds)] STOP early — no more eligible mail" | tee -a "$MASTER_LOG"
     break
   fi

@@ -142,8 +142,8 @@ GMAIL_TRIAGE_TOTAL=25 GMAIL_TRIAGE_CHUNK=25 "$OPENCLAW_HOME/bin/gmail_triage_2h.
 1. Sync completes against your Chroma collection (exit 0).
 2. Agent lists ≤25 unread (or reports none).
 3. If mail existed: `finalize_triage` applied labels (`GMAIL_LABEL_PREFIX/<CAT>`, default `OC/`).
-4. Slack digest posted (ACTION/URGENT + NEWSLETTER bullets only).
-5. Verify script exits 0 (recovers orphan finalize if the model dropped `tool_call` `id`).
+4. Verify script exits 0 (recovers orphan finalize if the model dropped `tool_call` `id`; fails + signals retry if the model leaked `tool_call` as chat text).
+5. Runner posts Slack digest from verify `slack_text` (not agent `--deliver`).
 
 ## Unsubscribe security notes
 
@@ -155,6 +155,7 @@ GMAIL_TRIAGE_TOTAL=25 GMAIL_TRIAGE_CHUNK=25 "$OPENCLAW_HOME/bin/gmail_triage_2h.
 ## Pitfalls
 
 - **Missing `tool_call` `id`** → validation fails; rely on `gmail_e2e_verify_batch.py` after each page.
+- **Model echoes `tool_call` as chat** → verify returns `tool_call_leaked_not_executed` + `retry: true`; runners retry once, then fail closed (no Slack post of raw YAML).
 - **Missing URL env** → scripts/MCP raise required-env errors.
 - **Wrong collection** → set `GMAIL_CHROMA_COLLECTION`.
 - **MCP without env** → gateway must inherit `gmail.env` vars.
