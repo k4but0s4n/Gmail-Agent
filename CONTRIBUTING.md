@@ -5,7 +5,7 @@
 - `package/mcp/` — stdlib Python MCP + ops (keep dependencies at zero)
 - `package/scripts/` — cron runners + e2e harnesses
 - `package/openclaw/` — agent rules / skill text
-- `package/docs/` — install and architecture
+- `package/docs/` — install, architecture, and [`COMMANDS.md`](package/docs/COMMANDS.md) (imperative operator phrases)
 
 ## Rules of the road
 
