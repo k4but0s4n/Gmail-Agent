@@ -22,9 +22,11 @@ Gmail triage on OpenClaw: list unread mail, categorize, label, queue newsletter/
 
 **Later (0.2.0):** successful unsub approve watches the sender; after grace, recidivist mail is forced to SPAM (mark-read, no re-queue).
 
+**Later (0.2.1):** runners no longer use agent `--deliver`; verify builds `slack_text` and fails closed on leaked `tool_call` YAML (retry once). Reclassify strips sibling `PREFIX/*` labels; SPAM marked read by default.
+
 ### Slack digests
 
-Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER. Count line still shows all six.
+Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER. Count line still shows all six. Posted by the runner after verify (not agent `--deliver`).
 
 ### Chunked triage (small-model safe)
 

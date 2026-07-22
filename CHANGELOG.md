@@ -7,6 +7,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-22
+
 ### Fixed
 - **Slack tool_call leak** — verify fails (with `retry: true`) when the model echoes `tool_call` YAML as chat text instead of invoking tools; runners retry the batch once on a new session key. Previously `listed_count: 0` was treated as an empty inbox and `--deliver` posted the leak to Slack.
 - **Post-unsub override guards** — no hit bumps during grace; no double-count on same-batch domain promote; never override URGENT/ACTION-REQUIRED; sibling promotion only from NEWSLETTER/SPAM; surface `missing_from` when From cannot be resolved.
@@ -71,5 +73,6 @@ First public-ready release of **openclaw-gmail-triage**: stdlib MCP servers, cro
 - Bind Chroma/embed/retrieve carefully; treat them as trusted internal services.
 - Never commit `credentials.json`, `gcp-oauth.keys.json`, `secrets.json`, or a filled-in `gmail.env`.
 
-[0.2.0]: https://github.com/k4but0s4n/Gmail-Agent/releases/tag/v0.2.0
+[0.2.1]: https://github.com/k4but0s4n/Gmail-Agent/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/k4but0s4n/Gmail-Agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/k4but0s4n/Gmail-Agent/releases/tag/v0.1.0
