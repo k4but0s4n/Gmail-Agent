@@ -55,7 +55,7 @@ URLs and paths come from env via `mcp/_config.py` (`CHROMA_URL`, `GMAIL_EMBED_UR
 
 `PREFIX` = `GMAIL_LABEL_PREFIX` (default `OC`).
 
-\* Post-unsub recidivists (sender watched after a successful approve, past grace): forced to **SPAM**, marked read by default (`GMAIL_MARK_POST_UNSUB_SPAM_READ`), and **not** re-queued for unsubscribe.
+\* Post-unsub recidivists (sender watched after a successful approve, past grace): forced to **SPAM**, marked read by default (`GMAIL_MARK_POST_UNSUB_SPAM_READ`), and **not** re-queued for unsubscribe. **URGENT** / **ACTION-REQUIRED** are never overridden. Domain promotion only counts **NEWSLETTER** / **SPAM** siblings.
 
 ## Post-unsub watch
 

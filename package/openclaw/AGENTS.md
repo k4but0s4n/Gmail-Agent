@@ -10,7 +10,9 @@
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
 - **Never** call `list_unsubscribe__approve_unsubscribe` or `reject_unsubscribe` — human uses CLI
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
-- After a prior successful unsub, `finalize_triage` may force matching senders to **SPAM** (past grace). Categorize normally; do not special-case.- **Never fabricate**. **No auto-draft**. Skip bootstrap.
+- After a prior successful unsub, `finalize_triage` may force matching senders to **SPAM** (past grace). Categorize normally; do not special-case.
+- Always include `from` on finalize items when known — post-unsub watch matching needs it if header fetch fails.
+- **Never fabricate**. **No auto-draft**. Skip bootstrap.
 - If a tool returns `Validation failed`, **retry once** with a correct `tool_call`. Never claim labels/unsub success without a successful finalize result (`ok: true`).
 
 ## tool_call format (mandatory)

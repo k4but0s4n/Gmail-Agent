@@ -7,6 +7,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Post-unsub override guards** — no hit bumps during grace; no double-count on same-batch domain promote; never override URGENT/ACTION-REQUIRED; sibling promotion only from NEWSLETTER/SPAM; surface `missing_from` when From cannot be resolved.
+
 ### Added
 - **Commands doc** — [`package/docs/COMMANDS.md`](package/docs/COMMANDS.md): imperative operator phrases with `[placeholders]` (e.g. *List pending to unsubscribe*, *Unsuppress this sender/domain `[…]`*) plus CLI invocations; linked from README / INSTALL / MANIFEST.
 

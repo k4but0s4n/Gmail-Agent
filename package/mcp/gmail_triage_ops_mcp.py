@@ -286,6 +286,12 @@ def apply_post_unsub_overrides(items: list, unsub, *, record_hits: bool = True) 
     Returns list of override records for the finalize summary. Same-domain siblings of
     an email-scoped watch count toward domain promotion; a second pass re-matches after
     promotion so later items in the same batch can also override.
+
+    Guards (runtime-proven):
+    - Never bump hits / promote for mail still inside grace (exact watch, not past grace).
+    - Only NEWSLETTER/SPAM participate in sibling promotion notes.
+    - Never override URGENT / ACTION-REQUIRED (high-signal categories).
+    - Pass-2 overrides do not double-count hits already recorded via sibling note.
     """
     overrides = []
     if not getattr(unsub, "POST_UNSUB_WATCH_ENABLED", True):
@@ -294,6 +300,11 @@ def apply_post_unsub_overrides(items: list, unsub, *, record_hits: bool = True) 
     hit_fn = getattr(unsub, "record_post_unsub_hit", None)
     if not callable(match_fn):
         return overrides
+
+    # Marketing-like cats may promote domain scope and be forced to SPAM.
+    # High-signal cats are never overridden by post-unsub watch.
+    PROMOTE_CATS = {"NEWSLETTER", "SPAM"}
+    PROTECTED_CATS = {"URGENT", "ACTION-REQUIRED"}
 
     def _ensure_from(item: dict) -> str:
         from_hdr = item.get("from") or ""
@@ -306,9 +317,10 @@ def apply_post_unsub_overrides(items: list, unsub, *, record_hits: bool = True) 
                 item["from"] = from_hdr
         except Exception as exc:
             log(f"post-unsub From fetch failed for {item.get('message_id')}: {exc}")
+            item["post_unsub_skipped_reason"] = "missing_from"
         return from_hdr
 
-    def _override_one(item: dict, entry: dict, from_hdr: str) -> dict:
+    def _override_one(item: dict, entry: dict, from_hdr: str, *, do_hit: bool) -> dict:
         original = item["category"]
         item["category"] = "SPAM"
         item["post_unsub_override"] = True
@@ -317,7 +329,7 @@ def apply_post_unsub_overrides(items: list, unsub, *, record_hits: bool = True) 
         if MARK_POST_UNSUB_SPAM_READ:
             item["force_mark_read"] = True
         hit_entry = None
-        if record_hits and callable(hit_fn):
+        if do_hit and record_hits and callable(hit_fn):
             try:
                 hit_entry = hit_fn(from_hdr, entry)
             except Exception as exc:
@@ -332,16 +344,34 @@ def apply_post_unsub_overrides(items: list, unsub, *, record_hits: bool = True) 
             "marked_read": bool(item.get("force_mark_read")),
         }
 
-    # Pass 1: exact email / domain matches
+    sibling_noted_ids: set[str] = set()
+
+    # Pass 1: exact email / domain matches past grace
     pending_sibling_note: list[tuple[dict, str]] = []
     for item in items:
         if item.get("post_unsub_override"):
             continue
+        if item.get("category") in PROTECTED_CATS:
+            continue
         from_hdr = _ensure_from(item)
+        if not from_hdr:
+            if not item.get("post_unsub_skipped_reason"):
+                item["post_unsub_skipped_reason"] = "missing_from"
+            continue
         matched, entry = match_fn(from_hdr, require_past_grace=True)
         if matched and entry:
-            overrides.append(_override_one(item, entry, from_hdr))
-        elif from_hdr and record_hits and callable(hit_fn):
+            overrides.append(_override_one(item, entry, from_hdr, do_hit=True))
+            continue
+        # In-grace exact watch: do not bump hits (confirmation mail).
+        watched_ignoring_grace, _ = match_fn(from_hdr, require_past_grace=False)
+        if watched_ignoring_grace:
+            continue
+        # Only marketing-like siblings count toward domain promotion.
+        if (
+            item.get("category") in PROMOTE_CATS
+            and record_hits
+            and callable(hit_fn)
+        ):
             pending_sibling_note.append((item, from_hdr))
 
     # Sibling notes may promote email → domain for later / same-batch items
@@ -350,17 +380,34 @@ def apply_post_unsub_overrides(items: list, unsub, *, record_hits: bool = True) 
             continue
         try:
             hit_fn(from_hdr)
+            mid = item.get("message_id")
+            if mid:
+                sibling_noted_ids.add(mid)
         except Exception as exc:
             log(f"post-unsub sibling note failed: {exc}")
 
-    # Pass 2: re-match after possible promotion
+    # Pass 2: re-match after possible promotion (no double-count for sibling-noted ids)
     for item in items:
         if item.get("post_unsub_override"):
             continue
+        if item.get("category") in PROTECTED_CATS:
+            continue
+        if item.get("post_unsub_skipped_reason") == "missing_from":
+            continue
         from_hdr = item.get("from") or _ensure_from(item)
+        if not from_hdr:
+            continue
         matched, entry = match_fn(from_hdr, require_past_grace=True)
         if matched and entry:
-            overrides.append(_override_one(item, entry, from_hdr))
+            mid = item.get("message_id") or ""
+            overrides.append(
+                _override_one(
+                    item,
+                    entry,
+                    from_hdr,
+                    do_hit=(mid not in sibling_noted_ids),
+                )
+            )
 
     return overrides
 
