@@ -61,7 +61,7 @@ Borderline: LinkedIn *activity* → SOCIAL; LinkedIn *job/marketing digest* → 
 Large batches: pages of **≤25**, one finalize per page.
 
 ## Slack layout (mandatory) — keep digests short
-**Never markdown tables.** Two messages max.
+**Never markdown tables.** Two messages max (digest + optional unsub-draft thread).
 
 Slack body lists **ONLY**:
 - **ACTION-REQUIRED** (and **URGENT** if any — treat as action)
@@ -74,19 +74,42 @@ Do **not** list FYI, SOCIAL, or SPAM bullets in Slack (still label them via fina
 *Triage · <scope> · N messages*
 session: `<session_key_if_provided>`
 URGENT:n · ACTION:n · FYI:n · SOCIAL:n · NEWSLETTER:n · SPAM:n
+Unsub queued (this batch): N · Open pending total: M
 
 *ACTION-REQUIRED*
 • `message_id` · From · Subject…
 
 *NEWSLETTER* (queued for unsub / marked read)
-• `message_id` · From · Subject…
+• `message_id` · pending:`pending_id` · From · Subject…
+• `message_id` · pending:`pending_id` · From · Subject… _(already in queue)_
+• `message_id` · From · Subject… _(already unsubscribed)_
 
 Labels: … · Unsub queued: n · Marked read: n · Failures: n
 ```
 
+Runner may thread-post an *Unsub draft* with pending ids + CLI `--approve` line. **Never approve from Slack.**
+
 ### Full report follow-up
-Same restriction: **only ACTION-REQUIRED/URGENT + NEWSLETTER** bullets with `message_id`.  
+Same restriction: **only ACTION-REQUIRED/URGENT + NEWSLETTER** bullets with `message_id` (+ pending id when known).  
 One line for omitted counts is OK: `_FYI n · SOCIAL n · SPAM n omitted from digest_`.
 
+## Slack operator phrases (interactive)
+When the user asks in Slack (not during automated triage batches):
+
+### `unsub <gmail_message_id>` / `unsubscribe <gmail_message_id>`
+1. Call `tool_call` id=`list_unsubscribe__propose_unsubscribe` with that `message_id` and category **NEWSLETTER** (or **SPAM** if the user said spam).
+2. Reply with the **tool note only** — include pending `id` when present. Examples:
+   - newly queued → `Queued for approval — pending id \`a5b1\``
+   - `already_in_queue` → `Already in queue (\`pending\`/\`needs_manual\`/\`blocked\`) — pending id \`a5b1\``
+   - `already_unsubscribed` → `Already unsubscribed — no new pending id`
+3. **Never** dump runtime context, session keys, or tool YAML. **Never** call `approve_unsubscribe`.
+
+### `… and mark as SPAM` / `mark <gmail_message_id> as SPAM`
+1. Call `tool_call` id=`gmail_triage_ops__finalize_triage` with one item `{message_id, category: "SPAM"}` (include `from`/`subject` when known). Invoke the meta-tool — **never echo YAML**.
+2. Confirm the label result from the tool response (`ok`, `labels_applied`). If unsub was also requested, propose first (or rely on finalize’s NEWSLETTER/SPAM queue) and still surface the propose note.
+
+Approve remains **human CLI only**:
+`python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve <pending_id>…`
+
 ## Out of scope
-Browser, send, auto-unsub without approve
+Browser, send, auto-unsub / approve from Slack

@@ -578,10 +578,13 @@ def finalize_triage(items: list) -> dict:
     queued = [u for u in unsub_results if u.get("proposed")]
     skipped = [u for u in unsub_results if u.get("skipped")]
     needs_manual = [u for u in unsub_results if u.get("status") == "needs_manual"]
+    already_queued = [u for u in skipped if u.get("reason") == "already_in_queue"]
+    already_done = [u for u in skipped if u.get("reason") == "already_unsubscribed"]
     label_ok = sum(1 for r in label_results if r.get("ok"))
     marked_read = sum(1 for r in label_results if r.get("ok") and r.get("marked_read"))
     seen_marked = mark_triage_seen(normalized, label_results)
     label_fail = [r for r in label_results if not r.get("ok")]
+    pending_open_total = int(unsub.count_open_pending())
 
     summary = {
         "ok": not label_fail and not errors,
@@ -596,13 +599,42 @@ def finalize_triage(items: list) -> dict:
         "post_unsub_overrides": post_unsub_overrides,
         "post_unsub_override_count": len(post_unsub_overrides),
         "unsub_queued": [
-            {"id": u.get("id"), "category": u["category"], "from": u["from"], "subject": u["subject"], "method": u.get("method")}
+            {
+                "id": u.get("id"),
+                "message_id": u.get("message_id"),
+                "category": u["category"],
+                "from": u["from"],
+                "subject": u["subject"],
+                "method": u.get("method"),
+            }
             for u in queued
+        ],
+        "unsub_already_queued": [
+            {
+                "message_id": u.get("message_id"),
+                "id": u.get("id"),
+                "from": u.get("from"),
+                "subject": u.get("subject"),
+                "category": u.get("category"),
+            }
+            for u in already_queued
+        ],
+        "unsub_already_done": [
+            {
+                "message_id": u.get("message_id"),
+                "from": u.get("from"),
+                "subject": u.get("subject"),
+                "category": u.get("category"),
+            }
+            for u in already_done
         ],
         "unsub_skipped": skipped,
         "unsub_needs_manual": needs_manual,
         "unsub_queued_count": len(queued),
+        "unsub_already_queued_count": len(already_queued),
+        "unsub_already_done_count": len(already_done),
         "unsub_skipped_count": len(skipped),
+        "pending_open_total": pending_open_total,
         "parse_errors": errors,
         "note": (
             "Labels applied (exclusive PREFIX/* — prior category labels removed). "

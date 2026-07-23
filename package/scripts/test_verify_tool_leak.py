@@ -9,8 +9,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-VERIFY = ROOT / "mcp" / "gmail_e2e_verify_batch.py"
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+# Repo layout: package/scripts → package/mcp; flat deploy: ~/.openclaw/bin/*.py
+_VERIFY_CANDIDATES = (
+    ROOT / "mcp" / "gmail_e2e_verify_batch.py",
+    HERE / "gmail_e2e_verify_batch.py",
+)
+VERIFY = next((p for p in _VERIFY_CANDIDATES if p.exists()), _VERIFY_CANDIDATES[0])
 
 
 def run_verify(session_file: Path, key: str = "test-session") -> tuple[int, dict]:
@@ -189,6 +195,113 @@ def main() -> None:
         assert "ACTION-REQUIRED" in st and "abc123" in st, st
         assert "Chris Shoulet" in st and "Cyber sales networking question" in st, st
         print("ok: finalize success → slack_text with From · Subject")
+
+        # 4) NEWSLETTER digest: both IDs, open-total, already-in-queue, unsub draft
+        news = tmp_p / "news.jsonl"
+        news_summary = {
+            "ok": True,
+            "total": 2,
+            "counts": {
+                "URGENT": 0,
+                "ACTION-REQUIRED": 0,
+                "FYI": 0,
+                "SOCIAL": 0,
+                "NEWSLETTER": 2,
+                "SPAM": 0,
+            },
+            "labels_applied": 2,
+            "marked_read": 2,
+            "unsub_queued_count": 1,
+            "pending_open_total": 7,
+            "label_failures": [],
+            "unsub_queued": [
+                {
+                    "id": "a5b1c2d3e4f5",
+                    "message_id": "msg_new",
+                    "category": "NEWSLETTER",
+                    "from": "Promo <promo@example.com>",
+                    "subject": "This week only",
+                }
+            ],
+            "unsub_already_queued": [
+                {
+                    "id": "3ef612345678",
+                    "message_id": "msg_old",
+                    "category": "NEWSLETTER",
+                    "from": "Digest <digest@example.com>",
+                    "subject": "Already queued digest",
+                }
+            ],
+            "unsub_already_done": [],
+        }
+        listed_news = (
+            "Listed 2 email(s) (offset=0, eligible_total=2, newest-first)\n"
+            "\n[1]\n"
+            "    from:    Promo <promo@example.com>\n"
+            "    subject: This week only\n"
+            "    date:    Wed, 22 Jul 2026 12:00:00 -0400\n"
+            "    msg_id:  msg_new\n"
+            "\n[2]\n"
+            "    from:    Digest <digest@example.com>\n"
+            "    subject: Already queued digest\n"
+            "    date:    Wed, 22 Jul 2026 11:00:00 -0400\n"
+            "    msg_id:  msg_old\n"
+        )
+        listed_news_env = json.dumps(
+            {
+                "tool": {"name": "email_query__list_recent"},
+                "result": {"content": [{"type": "text", "text": listed_news}]},
+            }
+        )
+        write_jsonl(
+            news,
+            [
+                {
+                    "message": {
+                        "role": "toolResult",
+                        "content": [{"type": "text", "text": listed_news_env}],
+                    }
+                },
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "name": "tool_call",
+                                "arguments": {
+                                    "id": "gmail_triage_ops__finalize_triage",
+                                    "args": {
+                                        "items": [
+                                            {"message_id": "msg_new", "category": "NEWSLETTER"},
+                                            {"message_id": "msg_old", "category": "NEWSLETTER"},
+                                        ]
+                                    },
+                                },
+                            }
+                        ],
+                    }
+                },
+                {
+                    "message": {
+                        "role": "toolResult",
+                        "content": [{"type": "text", "text": json.dumps(news_summary)}],
+                    }
+                },
+            ],
+        )
+        code, data = run_verify(news)
+        assert code == 0, data
+        st = data.get("slack_text") or ""
+        assert "Unsub queued (this batch): 1 · Open pending total: 7" in st, st
+        assert "`msg_new` · pending:`a5b1c2d3e4f5`" in st, st
+        assert "`msg_old` · pending:`3ef612345678`" in st, st
+        assert "_(already in queue)_" in st, st
+        assert "*Unsub draft*" in st and "--approve" in st, st
+        draft = data.get("unsub_draft_text") or ""
+        assert "a5b1c2d3e4f5" in draft and "3ef612345678" in draft, draft
+        assert "CLI approve only" in draft, draft
+        print("ok: newsletter digest → pending ids + open-total + already-in-queue + draft")
 
     print("\nALL PASS — verify tool-leak regression")
 

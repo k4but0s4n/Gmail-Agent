@@ -27,7 +27,8 @@ WATCH_FILE = STATE_DIR / "unsubscribe_watch.json"
 
 AUTO_CATEGORIES = {"NEWSLETTER", "SPAM"}
 ALLOWED_CATEGORIES = {"NEWSLETTER", "SPAM", "FYI", "SOCIAL", "URGENT", "ACTION-REQUIRED", "USER"}
-SERVER_INFO = {"name": "list-unsubscribe", "version": "0.5.0"}
+OPEN_STATUSES = frozenset({"pending", "needs_manual", "blocked"})
+SERVER_INFO = {"name": "list-unsubscribe", "version": "0.5.1"}
 PROTOCOL_VERSION = "2024-11-05"
 
 # Post-unsub recidivism: after successful approve, watch sender; later mail → SPAM.
@@ -921,12 +922,11 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
     items = pending.get("items") or {}
 
     # Already in queue for this Gmail message (any open status).
-    open_statuses = {"pending", "needs_manual", "blocked"}
     for existing in items.values():
         if existing.get("message_id") != message_id:
             continue
         st = existing.get("status")
-        if st in open_statuses and not force:
+        if st in OPEN_STATUSES and not force:
             return {
                 "ok": True,
                 "proposed": False,
@@ -1036,14 +1036,31 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
     }
 
 
+def count_open_pending() -> int:
+    """Count proposals still awaiting operator action (not page-sliced)."""
+    pending = load_pending()
+    return sum(
+        1
+        for i in (pending.get("items") or {}).values()
+        if i.get("status") in OPEN_STATUSES
+    )
+
+
 def list_pending(limit: int = 50) -> dict:
     pending = load_pending()
-    items = list(pending.get("items", {}).values())
+    items = [
+        i
+        for i in (pending.get("items") or {}).values()
+        if i.get("status") in OPEN_STATUSES
+    ]
     # newest first
     items.sort(key=lambda x: x.get("ts", ""), reverse=True)
-    items = items[: max(1, limit)]
+    open_total = len(items)
+    page = items[: max(1, int(limit or 50))]
     return {
-        "count": len(items),
+        "count": open_total,
+        "returned": len(page),
+        "open_total": open_total,
         "items": [
             {
                 "id": i.get("id"),
@@ -1057,7 +1074,7 @@ def list_pending(limit: int = 50) -> dict:
                 "target": (i.get("target") or "")[:120],
                 "ts": i.get("ts"),
             }
-            for i in items
+            for i in page
         ],
         "hint": "User must explicitly approve ids. Then call approve_unsubscribe.",
     }

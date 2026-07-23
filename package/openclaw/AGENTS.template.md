@@ -56,12 +56,17 @@ Finalize applies `{GMAIL_LABEL_PREFIX}/<CAT>` (default prefix `OC`). Do not inve
 4. Slack digest **only after** finalize `ok: true`.
 
 ## Slack layout (keep short)
-- One count line for all six categories.
+- One count line for all six categories + `Unsub queued (this batch): N · Open pending total: M`.
 - Next line: `session: <SESSION_KEY>`
 - Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER.
+- NEWSLETTER bullets: `` `message_id` · pending:`pending_id` · From · Subject `` (+ _(already in queue)_ / _(already unsubscribed)_ notes).
 - Omit FYI / SOCIAL / SPAM from the body (still label them).
-- Include `message_id` on every shown bullet.
-- No markdown tables.
+- Include `message_id` on every shown bullet; include pending proposal id when known.
+- No markdown tables. Never approve from Slack (CLI only).
+
+## Slack operator phrases
+- `unsub <gmail_message_id>` → `list_unsubscribe__propose_unsubscribe` (NEWSLETTER, or SPAM if user said spam). Reply with the tool note + pending id / already_in_queue / already_unsubscribed. Never dump runtime context. Never approve.
+- `mark <gmail_message_id> as SPAM` → real `gmail_triage_ops__finalize_triage` tool_call for that one item; confirm label result. Never echo YAML.
 
 ## Out of scope
-Do not approve unsubs during automated triage. Do not draft unless the user asks. Do not browse.
+Do not approve unsubs from Slack or during automated triage. Do not draft unless the user asks. Do not browse.

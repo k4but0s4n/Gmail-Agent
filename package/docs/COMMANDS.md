@@ -29,6 +29,18 @@ Reject defaults: suppress **domain**. Use `--email` for exact address only, or `
 
 ---
 
+## Slack operator phrases (agent; draft-only)
+
+| # | Phrase | Agent action |
+|---|---|---|
+| 9a | Unsub this message `[gmail_message_id]` | `list_unsubscribe__propose_unsubscribe` (category NEWSLETTER, or SPAM if said spam); reply with tool note + pending id / already_in_queue / already_unsubscribed |
+| 9b | Mark this message as SPAM `[gmail_message_id]` | `gmail_triage_ops__finalize_triage` with one `{message_id, category: "SPAM"}` item; confirm label result |
+| 9c | Unsub and mark as SPAM `[gmail_message_id]` | propose (SPAM) then finalize SPAM (or finalize SPAM alone — finalize queues unsub); surface propose note + label ok |
+
+**Approve stays CLI-only** — never from Slack/agent: `--approve <pending_id>…`. Digests / thread drafts list both Gmail `message_id` and pending proposal `id` for copy-paste.
+
+---
+
 ## Triage / labels
 
 | # | Command | Invocation |

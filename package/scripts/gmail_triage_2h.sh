@@ -40,24 +40,33 @@ mkdir -p "$LOG_DIR" "$(dirname "$LOCK_FILE")"
 chmod 700 "$(dirname "$LOCK_FILE")" 2>/dev/null || true
 
 slack_post() {
+  # Prints parent message ts on success (for thread replies). Optional $3 = thread_ts.
   local channel="$1"
   local text="$2"
+  local thread_ts="${3:-}"
   [[ -n "$channel" ]] || return 0
-  OPENCLAW_SECRETS="$SECRETS" /usr/bin/python3 - "$channel" "$text" <<'PY' >>"$LOG_FILE" 2>&1 || true
+  OPENCLAW_SECRETS="$SECRETS" /usr/bin/python3 - "$channel" "$text" "$thread_ts" <<'PY' 2>>"$LOG_FILE" || true
 import json, os, sys, urllib.request
 from pathlib import Path
-channel, text = sys.argv[1], sys.argv[2]
+channel, text, thread_ts = sys.argv[1], sys.argv[2], sys.argv[3]
 secrets = Path(os.environ["OPENCLAW_SECRETS"])
 token = json.loads(secrets.read_text())["providers"]["slack"]["botToken"]
+payload = {"channel": channel, "text": text}
+if thread_ts:
+    payload["thread_ts"] = thread_ts
 req = urllib.request.Request(
     "https://slack.com/api/chat.postMessage",
-    data=json.dumps({"channel": channel, "text": text}).encode(),
+    data=json.dumps(payload).encode(),
     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
     method="POST",
 )
 with urllib.request.urlopen(req, timeout=20) as r:
     data = json.loads(r.read().decode())
-print("slack_ok" if data.get("ok") else f"slack_err {data}")
+if data.get("ok"):
+    print(data.get("ts") or "", end="")
+    print(f"slack_ok ts={data.get('ts')}", file=sys.stderr)
+else:
+    print(f"slack_err {data}", file=sys.stderr)
 PY
 }
 
@@ -91,24 +100,33 @@ LOG_FILE="$LOG_FILE"
 SECRETS="$SECRETS"
 
 slack_post() {
+  # Prints parent message ts on success (for thread replies). Optional \$3 = thread_ts.
   local channel="\$1"
   local text="\$2"
+  local thread_ts="\${3:-}"
   [[ -n "\$channel" ]] || return 0
-  OPENCLAW_SECRETS="\$SECRETS" /usr/bin/python3 - "\$channel" "\$text" <<'PY' >>"\$LOG_FILE" 2>&1 || true
+  OPENCLAW_SECRETS="\$SECRETS" /usr/bin/python3 - "\$channel" "\$text" "\$thread_ts" <<'PY' 2>>"\$LOG_FILE" || true
 import json, os, sys, urllib.request
 from pathlib import Path
-channel, text = sys.argv[1], sys.argv[2]
+channel, text, thread_ts = sys.argv[1], sys.argv[2], sys.argv[3]
 secrets = Path(os.environ["OPENCLAW_SECRETS"])
 token = json.loads(secrets.read_text())["providers"]["slack"]["botToken"]
+payload = {"channel": channel, "text": text}
+if thread_ts:
+    payload["thread_ts"] = thread_ts
 req = urllib.request.Request(
     "https://slack.com/api/chat.postMessage",
-    data=json.dumps({"channel": channel, "text": text}).encode(),
+    data=json.dumps(payload).encode(),
     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
     method="POST",
 )
 with urllib.request.urlopen(req, timeout=20) as r:
     data = json.loads(r.read().decode())
-print("slack_ok" if data.get("ok") else f"slack_err {data}")
+if data.get("ok"):
+    print(data.get("ts") or "", end="")
+    print(f"slack_ok ts={data.get('ts')}", file=sys.stderr)
+else:
+    print(f"slack_err {data}", file=sys.stderr)
 PY
 }
 
@@ -188,8 +206,12 @@ SESSION_KEY=\${SESSION_KEY}
     else
       # Post digest only after verify ok (never raw tool_call text)
       SLACK_TEXT=\$(printf '%s' "\$LAST_VERIFY_OUT" | /usr/bin/python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("slack_text") or "")' 2>/dev/null || true)
+      UNSUB_DRAFT=\$(printf '%s' "\$LAST_VERIFY_OUT" | /usr/bin/python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("unsub_draft_text") or "")' 2>/dev/null || true)
       if [[ -n "\$SLACK_TEXT" ]]; then
-        slack_post "\$GMAIL_CHANNEL" "\$SLACK_TEXT"
+        PARENT_TS=\$(slack_post "\$GMAIL_CHANNEL" "\$SLACK_TEXT")
+        if [[ -n "\$PARENT_TS" && -n "\$UNSUB_DRAFT" ]]; then
+          slack_post "\$GMAIL_CHANNEL" "\$UNSUB_DRAFT" "\$PARENT_TS" >/dev/null || true
+        fi
       fi
     fi
 
