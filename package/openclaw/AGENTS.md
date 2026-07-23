@@ -84,10 +84,10 @@ Unsub queued (this batch): N · Open pending total: M
 • `message_id` · pending:`pending_id` · From · Subject… _(already in queue)_
 • `message_id` · From · Subject… _(already unsubscribed)_
 
-Labels: … · Unsub queued: n · Marked read: n · Failures: n
+_Applied: n labels · n marked read · n failures_
 ```
 
-Runner may post a digest **Approve these unsubs** button (allowlisted operators via interactivity endpoint) and thread an *Unsub draft* with CLI `--approve` fallback. **Never** call `approve_unsubscribe` from the agent.
+Runner posts an **Approve will unsubscribe:** list (this batch) plus **Approve these unsubs** button for allowlisted operators. No CLI draft thread. **Never** call `approve_unsubscribe` from the agent.
 
 ### Full report follow-up
 Same restriction: **only ACTION-REQUIRED/URGENT + NEWSLETTER** bullets with `message_id` (+ pending id when known).  

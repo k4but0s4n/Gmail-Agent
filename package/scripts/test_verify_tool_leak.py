@@ -297,12 +297,16 @@ def main() -> None:
         assert "`msg_new` · pending:`a5b1c2d3e4f5`" in st, st
         assert "`msg_old` · pending:`3ef612345678`" in st, st
         assert "_(already in queue)_" in st, st
-        assert "*Unsub draft*" in st and "--approve" in st, st
-        draft = data.get("unsub_draft_text") or ""
-        assert "a5b1c2d3e4f5" in draft and "3ef612345678" in draft, draft
-        assert "Approve these unsubs" in draft or "CLI fallback" in draft, draft
-        assert "--approve" in draft, draft
-        print("ok: newsletter digest → pending ids + open-total + already-in-queue + draft")
+        assert "*Unsub draft*" not in st, st
+        assert "Unsub queued: 1" not in st.split("Applied:")[-1] if "Applied:" in st else True, st
+        assert "Applied:" in st and "marked read" in st, st
+        assert not (data.get("unsub_draft_text") or "").strip(), data
+        ids = data.get("unsub_pending_ids") or []
+        assert "a5b1c2d3e4f5" in ids and "3ef612345678" in ids, ids
+        alines = data.get("unsub_approve_lines") or []
+        assert any("a5b1c2d3e4f5" in x for x in alines), alines
+        assert any("Promo" in x for x in alines), alines
+        print("ok: newsletter digest → pending ids + open-total + approve lines (no draft body)")
 
     print("\nALL PASS — verify tool-leak regression")
 

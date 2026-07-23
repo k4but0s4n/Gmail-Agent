@@ -52,17 +52,12 @@ slack_post() {
 }
 
 slack_post_digest() {
-  # Digest + optional Approve button + CLI draft thread. Prints parent ts.
+  # Digest + Approve button (no thread). Arg $2 = path to verify JSON.
   local channel="$1"
-  local text="$2"
-  local unsub_draft="$3"
-  local unsub_ids="$4"
-  local session_key="$5"
-  [[ -n "$channel" ]] || return 0
+  local verify_json="$2"
+  [[ -n "$channel" && -f "$verify_json" ]] || return 0
   OPENCLAW_SECRETS="$SECRETS" /usr/bin/python3 "$SLACK_POST" \
-    --digest --channel "$channel" --text "$text" \
-    --unsub-draft "$unsub_draft" --unsub-ids "$unsub_ids" \
-    --session-key "$session_key" \
+    --digest --channel "$channel" --from-verify "$verify_json" \
     2>>"$LOG_FILE" || true
 }
 
@@ -108,15 +103,10 @@ slack_post() {
 
 slack_post_digest() {
   local channel="\$1"
-  local text="\$2"
-  local unsub_draft="\$3"
-  local unsub_ids="\$4"
-  local session_key="\$5"
-  [[ -n "\$channel" ]] || return 0
+  local verify_json="\$2"
+  [[ -n "\$channel" && -f "\$verify_json" ]] || return 0
   OPENCLAW_SECRETS="\$SECRETS" /usr/bin/python3 "\$SLACK_POST" \\
-    --digest --channel "\$channel" --text "\$text" \\
-    --unsub-draft "\$unsub_draft" --unsub-ids "\$unsub_ids" \\
-    --session-key "\$session_key" \\
+    --digest --channel "\$channel" --from-verify "\$verify_json" \\
     2>>"\$LOG_FILE" || true
 }
 
@@ -194,12 +184,12 @@ SESSION_KEY=\${SESSION_KEY}
     if [[ "\$LAST_RC" -ne 0 || "\$LAST_VRC" -ne 0 ]]; then
       FAIL=1
     else
-      # Post digest only after verify ok (never raw tool_call text)
+      # Post digest only after verify ok (never raw tool_call text; no thread draft)
       SLACK_TEXT=\$(printf '%s' "\$LAST_VERIFY_OUT" | /usr/bin/python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("slack_text") or "")' 2>/dev/null || true)
-      UNSUB_DRAFT=\$(printf '%s' "\$LAST_VERIFY_OUT" | /usr/bin/python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("unsub_draft_text") or "")' 2>/dev/null || true)
-      UNSUB_IDS=\$(printf '%s' "\$LAST_VERIFY_OUT" | /usr/bin/python3 -c 'import sys,json; d=json.load(sys.stdin); print(",".join(d.get("unsub_pending_ids") or []))' 2>/dev/null || true)
       if [[ -n "\$SLACK_TEXT" ]]; then
-        slack_post_digest "\$GMAIL_CHANNEL" "\$SLACK_TEXT" "\$UNSUB_DRAFT" "\$UNSUB_IDS" "\$SESSION_KEY" >/dev/null || true
+        VERIFY_JSON="\$LOG_DIR/\${SESSION_KEY}.verify.json"
+        printf '%s' "\$LAST_VERIFY_OUT" >"\$VERIFY_JSON"
+        slack_post_digest "\$GMAIL_CHANNEL" "\$VERIFY_JSON" >/dev/null || true
       fi
     fi
 

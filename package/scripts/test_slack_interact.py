@@ -101,12 +101,21 @@ def main() -> None:
         bid2 = unsub.save_unsub_draft_batch(["p1", "p2"], {"channel": "CCHAN"})
 
         # --- Block Kit helper ---
-        blocks = slack_post.build_approve_blocks("*Digest*", bid2)
+        blocks = slack_post.build_approve_blocks(
+            "*Digest*\n_Applied: 1 labels_",
+            bid2,
+            approve_lines=["• pending:`p1` · From · Subject"],
+        )
         actions = [b for b in blocks if b.get("type") == "actions"]
         if not actions or actions[0]["elements"][0]["value"] != bid2:
             fail(f"blocks missing approve value: {blocks}")
         if actions[0]["elements"][0]["action_id"] != slack_post.ACTION_ID:
             fail("wrong action_id")
+        approve_sec = [b for b in blocks if b.get("type") == "section" and "Approve will unsubscribe" in str(b)]
+        if not approve_sec:
+            fail(f"missing Approve will unsubscribe section: {blocks}")
+        if any(b.get("type") == "actions" for b in blocks) and blocks.index(actions[0]) < blocks.index(approve_sec[0]):
+            fail("button should come after approve preview section")
         ok("approve blocks")
 
         # --- allowlist fail-closed ---

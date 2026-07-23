@@ -72,16 +72,33 @@ def post_message(
         return {"ok": False, "error": str(exc)}
 
 
-def build_approve_blocks(digest_text: str, batch_id: str) -> list:
-    """Block Kit: digest section + Approve button + allowlist context."""
-    # Slack section text hard limit ~3000; keep a safe margin.
+def build_approve_blocks(
+    digest_text: str,
+    batch_id: str,
+    *,
+    approve_lines: list[str] | None = None,
+) -> list:
+    """Block Kit: digest → what will be approved → Approve button (no thread draft)."""
     body = (digest_text or "").strip()
-    if len(body) > 2900:
-        body = body[:2900].rstrip() + "…"
+    if len(body) > 2600:
+        body = body[:2600].rstrip() + "…"
+
+    lines = [ln for ln in (approve_lines or []) if ln]
+    if not lines:
+        lines = ["• _(pending ids for this batch)_"]
+    approve_body = "*Approve will unsubscribe:*\n" + "\n".join(lines[:20])
+    if len(approve_body) > 2800:
+        approve_body = approve_body[:2800].rstrip() + "…"
+
     return [
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": body or "_Triage digest_"},
+        },
+        {"type": "divider"},
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": approve_body},
         },
         {
             "type": "actions",
@@ -100,10 +117,7 @@ def build_approve_blocks(digest_text: str, batch_id: str) -> list:
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": (
-                        "Only allowlisted operators; executes one-click unsubs. "
-                        "CLI `--approve` still works."
-                    ),
+                    "text": "Allowlisted operators only · one-click unsub for the items listed above",
                 }
             ],
         },
@@ -119,15 +133,22 @@ def _parse_ids(raw: str) -> list[str]:
     return out
 
 
+def _parse_approve_lines(raw: str) -> list[str]:
+    """Newline-separated approve preview lines (from verify JSON)."""
+    return [ln.strip() for ln in (raw or "").split("\n") if ln.strip()]
+
+
 def post_digest(
     channel: str,
     slack_text: str,
     *,
-    unsub_draft_text: str = "",
+    unsub_draft_text: str = "",  # ignored — kept for CLI compat; no thread post
     unsub_ids: list[str] | None = None,
+    approve_lines: list[str] | None = None,
     session_key: str = "",
 ) -> dict:
-    """Post digest (with Approve button when ids present) + optional CLI draft thread."""
+    """Post digest with Approve button when ids present. No auto thread reply."""
+    del unsub_draft_text  # no Slack thread draft
     ids = [str(x).strip() for x in (unsub_ids or []) if str(x).strip()]
     blocks = None
     batch_id = ""
@@ -138,7 +159,9 @@ def post_digest(
             ids,
             {"session_key": session_key, "channel": channel},
         )
-        blocks = build_approve_blocks(slack_text, batch_id)
+        blocks = build_approve_blocks(
+            slack_text, batch_id, approve_lines=approve_lines
+        )
 
     parent = post_message(channel, slack_text, blocks=blocks)
     result = {
@@ -152,13 +175,6 @@ def post_digest(
         print(f"slack_err {parent}", file=sys.stderr)
         return result
     print(f"slack_ok ts={result['ts']} batch={batch_id or '-'}", file=sys.stderr)
-
-    draft = (unsub_draft_text or "").strip()
-    if draft and result["ts"]:
-        thread = post_message(channel, draft, thread_ts=result["ts"])
-        result["thread"] = thread
-        if not thread.get("ok"):
-            print(f"slack_err thread {thread}", file=sys.stderr)
     return result
 
 
@@ -172,22 +188,45 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Post as triage digest (Block Kit Approve when --unsub-ids set)",
     )
-    ap.add_argument("--unsub-draft", default="", help="CLI draft text for thread reply")
+    ap.add_argument("--unsub-draft", default="", help="Ignored (compat; no thread post)")
     ap.add_argument("--unsub-ids", default="", help="Comma-separated pending proposal ids")
+    ap.add_argument(
+        "--approve-lines",
+        default="",
+        help="Newline-separated preview lines for Approve section",
+    )
+    ap.add_argument(
+        "--from-verify",
+        default="",
+        help="Path to verify JSON (uses slack_text, unsub_pending_ids, unsub_approve_lines)",
+    )
     ap.add_argument("--session-key", default="")
     args = ap.parse_args(argv)
 
-    # Prefer OPENCLAW_SECRETS if runners export it.
     if os.environ.get("OPENCLAW_SECRETS"):
         os.environ.setdefault("OPENCLAW_SECRETS", os.environ["OPENCLAW_SECRETS"])
 
-    if args.digest or args.unsub_ids or args.unsub_draft:
+    text = args.text
+    unsub_ids = _parse_ids(args.unsub_ids)
+    approve_lines = _parse_approve_lines(args.approve_lines)
+    session_key = args.session_key
+    if args.from_verify:
+        data = json.loads(Path(args.from_verify).read_text(encoding="utf-8"))
+        text = data.get("slack_text") or text
+        unsub_ids = list(data.get("unsub_pending_ids") or unsub_ids)
+        approve_lines = list(data.get("unsub_approve_lines") or approve_lines)
+        session_key = data.get("session_key") or session_key
+
+    if args.digest or unsub_ids or args.from_verify:
+        if not (text or "").strip():
+            return 0
         out = post_digest(
             args.channel,
-            args.text,
-            unsub_draft_text=args.unsub_draft,
-            unsub_ids=_parse_ids(args.unsub_ids),
-            session_key=args.session_key,
+            text,
+            unsub_draft_text="",
+            unsub_ids=unsub_ids,
+            approve_lines=approve_lines,
+            session_key=session_key,
         )
         if out.get("ts"):
             print(out["ts"], end="")

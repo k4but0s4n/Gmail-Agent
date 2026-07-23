@@ -338,18 +338,32 @@ def _unsub_pending_ids(summary: dict | None) -> list[str]:
     return ids
 
 
+def build_unsub_approve_lines(summary: dict | None) -> list[str]:
+    """Human-readable lines for what the Approve button will execute (this batch)."""
+    lines: list[str] = []
+    seen: set[str] = set()
+    for key in ("unsub_queued", "unsub_already_queued"):
+        for u in (summary or {}).get(key) or []:
+            if not isinstance(u, dict):
+                continue
+            pid = str(u.get("id") or "").strip()
+            if not pid or pid in seen:
+                continue
+            seen.add(pid)
+            frm = (u.get("from") or "")[:50]
+            sub = (u.get("subject") or "")[:60]
+            extra = " · ".join(x for x in (frm, sub) if x)
+            if extra:
+                lines.append(f"• pending:`{pid}` · {extra}")
+            else:
+                lines.append(f"• pending:`{pid}`")
+    return lines
+
+
 def build_unsub_draft_text(summary: dict | None) -> str:
-    """CLI approve draft for Slack thread reply (button is primary; CLI is fallback)."""
-    ids = _unsub_pending_ids(summary)
-    if not ids:
-        return ""
-    id_line = " ".join(f"`{i}`" for i in ids)
-    return (
-        "*Unsub draft* (prefer the digest **Approve these unsubs** button; "
-        "CLI fallback — do not paste ids into chat to approve)\n"
-        "`python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve <id>…`\n"
-        f"ids: {id_line}\n"
-    )
+    """Unused for Slack posts (kept for API compat). Approve UX is Block Kit only."""
+    del summary
+    return ""
 
 
 def build_slack_text(
@@ -477,14 +491,8 @@ def build_slack_text(
     labels = (summary or {}).get("labels_applied", "?")
     marked = (summary or {}).get("marked_read") or (summary or {}).get("newsletters_marked_read") or 0
     fails = len((summary or {}).get("label_failures") or [])
-    lines.append(
-        f"Labels: {labels} · Unsub queued: {unsub_n} · Marked read: {marked} · Failures: {fails}"
-    )
-
-    draft = build_unsub_draft_text(summary)
-    if draft:
-        lines.append("")
-        lines.append(draft.rstrip())
+    # Footer: apply stats only (unsub counts already shown above; button section lists approve targets).
+    lines.append(f"_Applied: {labels} labels · {marked} marked read · {fails} failures_")
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -546,8 +554,9 @@ def main():
             summary=finalize_summary,
             items=finalize_items,
         )
-        out["unsub_draft_text"] = build_unsub_draft_text(finalize_summary)
+        out["unsub_draft_text"] = ""  # no Slack thread draft; button section lists targets
         out["unsub_pending_ids"] = _unsub_pending_ids(finalize_summary)
+        out["unsub_approve_lines"] = build_unsub_approve_lines(finalize_summary)
         print(json.dumps(out))
         return 0
 
@@ -576,8 +585,9 @@ def main():
                 summary=summary,
                 items=orphan_items,
             )
-            out["unsub_draft_text"] = build_unsub_draft_text(summary)
+            out["unsub_draft_text"] = ""
             out["unsub_pending_ids"] = _unsub_pending_ids(summary)
+            out["unsub_approve_lines"] = build_unsub_approve_lines(summary)
         print(json.dumps(out, indent=2))
         return 0 if summary.get("ok") else 1
 
