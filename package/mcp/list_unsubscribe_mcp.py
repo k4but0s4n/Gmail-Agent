@@ -921,12 +921,46 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
       - already in queue for this message_id (pending/needs_manual/blocked)
       - same proposal id already done/rejected
     First-time messages create a new pending item.
+
+    If ``message_id`` is actually a pending proposal id (digest *Pending unsubscribe*),
+    return already-in-queue guidance — do not call Gmail (avoids HTTP 404).
     """
     category = (category or "").strip().upper()
     if category not in ALLOWED_CATEGORIES:
         return {"ok": False, "error": f"category {category!r} not allowed; use NEWSLETTER|SPAM|FYI|SOCIAL|URGENT|ACTION-REQUIRED|USER"}
 
-    meta = fetch_headers(message_id)
+    token = (message_id or "").strip()
+    if not token:
+        return {"ok": False, "error": "message_id required"}
+
+    # Digests list pending ids; operators often paste those into `unsub <id>`.
+    pending_items = (load_pending().get("items") or {})
+    if token in pending_items:
+        item = pending_items[token] or {}
+        status = item.get("status") or "pending"
+        frm = (item.get("from") or "")[:120]
+        return {
+            "ok": True,
+            "proposed": False,
+            "skipped": True,
+            "reason": "already_in_queue",
+            "id": token,
+            "status": status,
+            "from": frm,
+            "subject": (item.get("subject") or "")[:160],
+            "message_id": item.get("message_id"),
+            "executed": False,
+            "first_seen": False,
+            "note": (
+                f"Already in queue (`{status}`) — pending id `{token}`"
+                + (f" · {frm}" if frm else "")
+                + ". Approve via CLI: "
+                f"`python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve {token}`"
+            ),
+        }
+
+    meta = fetch_headers(token)
+    message_id = token
     from_header = meta.get("from") or ""
     subject = (meta.get("subject") or "")[:160]
     suppressed, matched = is_sender_suppressed(from_header)

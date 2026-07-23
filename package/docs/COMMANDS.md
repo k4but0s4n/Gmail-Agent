@@ -33,7 +33,7 @@ Reject defaults: suppress **domain**. Use `--email` for exact address only, or `
 
 | # | Phrase | Agent action |
 |---|---|---|
-| 9a | Unsub this message `[gmail_message_id]` | `list_unsubscribe__propose_unsubscribe` (category NEWSLETTER, or SPAM if said spam); reply with tool note + pending id / already_in_queue / already_unsubscribed |
+| 9a | Unsub `[gmail_message_id]` or pending id from digest | `list_unsubscribe__propose_unsubscribe` — if the id is already a pending proposal id, tool returns `already_in_queue` + CLI approve hint (do not approve from agent). For a Gmail message id, queues NEWSLETTER (or SPAM if said spam). Reply with the tool note only. |
 | 9b | Mark this message as SPAM `[gmail_message_id]` | `gmail_triage_ops__finalize_triage` with one `{message_id, category: "SPAM"}` item; confirm label result |
 | 9c | Unsub and mark as SPAM `[gmail_message_id]` | propose (SPAM) then finalize SPAM (or finalize SPAM alone — finalize queues unsub); surface propose note + label ok |
 

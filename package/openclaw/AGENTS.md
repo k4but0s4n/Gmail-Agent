@@ -95,13 +95,15 @@ One line for omitted counts is OK: `_FYI n · SOCIAL n · SPAM n omitted from di
 ## Slack operator phrases (interactive)
 When the user asks in Slack (not during automated triage batches):
 
-### `unsub <gmail_message_id>` / `unsubscribe <gmail_message_id>`
-1. Call `tool_call` id=`list_unsubscribe__propose_unsubscribe` with that `message_id` and category **NEWSLETTER** (or **SPAM** if the user said spam).
-2. Reply with the **tool note only** — include pending `id` when present. Examples:
+### `unsub <id>` / `unsubscribe <id>`
+Digests show **pending proposal ids** (short hex). Gmail **message ids** are longer hex.
+
+1. Call `tool_call` id=`list_unsubscribe__propose_unsubscribe` with that value as `message_id` and category **NEWSLETTER** (or **SPAM** if the user said spam).
+2. Reply with the **tool note only**:
+   - If the id was a **pending proposal id** already in queue → tool returns `already_in_queue` + CLI `--approve` hint. Relay that note. Do **not** retry as a different category.
    - newly queued → `Queued for approval — pending id \`a5b1\``
-   - `already_in_queue` → `Already in queue (\`pending\`/\`needs_manual\`/\`blocked\`) — pending id \`a5b1\``
    - `already_unsubscribed` → `Already unsubscribed — no new pending id`
-3. **Never** dump runtime context, session keys, or tool YAML. **Never** call `approve_unsubscribe`.
+3. **Never** dump runtime context, session keys, or tool YAML. **Never** call `approve_unsubscribe` (human CLI only).
 
 ### `… and mark as SPAM` / `mark <gmail_message_id> as SPAM`
 1. Call `tool_call` id=`gmail_triage_ops__finalize_triage` with one item `{message_id, category: "SPAM"}` (include `from`/`subject` when known). Invoke the meta-tool — **never echo YAML**.

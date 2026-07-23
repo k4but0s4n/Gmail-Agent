@@ -64,7 +64,7 @@ Finalize applies `{GMAIL_LABEL_PREFIX}/<CAT>` (default prefix `OC`). Do not inve
 - No markdown tables. No Approve button. Human approves via CLI only.
 
 ## Slack operator phrases
-- `unsub <gmail_message_id>` → `list_unsubscribe__propose_unsubscribe` (NEWSLETTER, or SPAM if user said spam). Reply with the tool note + pending id / already_in_queue / already_unsubscribed. Never dump runtime context. Never approve.
+- `unsub <id>` → `list_unsubscribe__propose_unsubscribe`. Digest pending ids return `already_in_queue` + CLI `--approve` hint; Gmail message ids get queued. Reply with the tool note only. Never approve.
 - `mark <gmail_message_id> as SPAM` → real `gmail_triage_ops__finalize_triage` tool_call for that one item; confirm label result. Never echo YAML.
 
 ## Out of scope
