@@ -80,9 +80,9 @@ Unsub queued (this batch): N · Open pending total: M
 • `message_id` · From · Subject…
 
 *NEWSLETTER* (queued for unsub / marked read)
-• `message_id` · pending:`pending_id` · From · Subject…
-• `message_id` · pending:`pending_id` · From · Subject… _(already in queue)_
-• `message_id` · From · Subject… _(already unsubscribed)_
+• `pending_id` · From · Subject…
+• `pending_id` · From · Subject… _(already in queue)_
+• From · Subject… _(already unsubscribed)_
 
 _Applied: n labels · n marked read · n failures_
 ```
@@ -90,7 +90,7 @@ _Applied: n labels · n marked read · n failures_
 Runner posts an **Approve will unsubscribe:** list (this batch) plus **Approve these unsubs** button for allowlisted operators. No CLI draft thread. **Never** call `approve_unsubscribe` from the agent.
 
 ### Full report follow-up
-Same restriction: **only ACTION-REQUIRED/URGENT + NEWSLETTER** bullets with `message_id` (+ pending id when known).  
+Same restriction: **only ACTION-REQUIRED/URGENT** bullets with `message_id`, and **NEWSLETTER** bullets with unsub `pending_id` only.  
 One line for omitted counts is OK: `_FYI n · SOCIAL n · SPAM n omitted from digest_`.
 
 ## Slack operator phrases (interactive)

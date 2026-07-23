@@ -2,20 +2,74 @@
 """Shared Slack chat.postMessage helper for triage digests (Block Kit Approve).
 
 Used by gmail_triage_2h.sh / gmail_e2e_200.sh. Stdlib only.
+
+Approve button modes (first match wins):
+  1) Signed link — GMAIL_SLACK_APPROVE_PUBLIC_BASE + GMAIL_SLACK_APPROVE_LINK_SECRET
+     (Tailscale Funnel / reverse-proxy; no Slack signing secret required)
+  2) Slack Interactivity action button — needs GMAIL_SLACK_SIGNING_SECRET + Request URL
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 import _config as cfg
 
 ACTION_ID = "gmail_unsub_approve"
+DEFAULT_LINK_TTL_SEC = 7 * 24 * 3600
+
+
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default).strip()
+
+
+def approve_link_secret() -> str:
+    return _env("GMAIL_SLACK_APPROVE_LINK_SECRET")
+
+
+def approve_public_base() -> str:
+    return _env("GMAIL_SLACK_APPROVE_PUBLIC_BASE").rstrip("/")
+
+
+def link_mode_enabled() -> bool:
+    return bool(approve_link_secret() and approve_public_base())
+
+
+def sign_approve_link(batch_id: str, *, ttl_sec: int = DEFAULT_LINK_TTL_SEC) -> str:
+    """Return absolute HTTPS URL for click-to-approve (confirm page)."""
+    secret = approve_link_secret()
+    base = approve_public_base()
+    if not secret or not base or not batch_id:
+        return ""
+    exp = str(int(time.time()) + max(60, int(ttl_sec)))
+    msg = f"{batch_id}:{exp}".encode()
+    sig = hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+    q = urllib.parse.urlencode({"b": batch_id, "e": exp, "s": sig})
+    return f"{base}/slack/approve?{q}"
+
+
+def verify_approve_link(batch_id: str, exp: str, sig: str) -> bool:
+    secret = approve_link_secret()
+    if not secret or not batch_id or not exp or not sig:
+        return False
+    try:
+        exp_i = int(exp)
+    except (TypeError, ValueError):
+        return False
+    if exp_i < int(time.time()):
+        return False
+    msg = f"{batch_id}:{exp}".encode()
+    expected = hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig.strip().lower())
 
 
 def load_bot_token() -> str:
@@ -90,7 +144,7 @@ def build_approve_blocks(
     if len(approve_body) > 2800:
         approve_body = approve_body[:2800].rstrip() + "…"
 
-    return [
+    blocks: list = [
         {
             "type": "section",
             "text": {"type": "mrkdwn", "text": body or "_Triage digest_"},
@@ -100,28 +154,37 @@ def build_approve_blocks(
             "type": "section",
             "text": {"type": "mrkdwn", "text": approve_body},
         },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "action_id": ACTION_ID,
-                    "text": {"type": "plain_text", "text": "Approve these unsubs", "emoji": False},
-                    "style": "primary",
-                    "value": batch_id,
-                }
-            ],
-        },
-        {
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": "Allowlisted operators only · one-click unsub for the items listed above",
-                }
-            ],
-        },
     ]
+
+    link = sign_approve_link(batch_id) if link_mode_enabled() else ""
+    if link:
+        btn = {
+            "type": "button",
+            "text": {"type": "plain_text", "text": "Approve these unsubs", "emoji": False},
+            "style": "primary",
+            "url": link,
+        }
+        ctx = "Opens confirm page · then posts Unsub confirmation in this channel"
+    else:
+        btn = {
+            "type": "button",
+            "action_id": ACTION_ID,
+            "text": {"type": "plain_text", "text": "Approve these unsubs", "emoji": False},
+            "style": "primary",
+            "value": batch_id,
+        }
+        ctx = "Allowlisted operators only · Slack Interactivity endpoint must be live"
+
+    blocks.extend(
+        [
+            {"type": "actions", "elements": [btn]},
+            {
+                "type": "context",
+                "elements": [{"type": "mrkdwn", "text": ctx}],
+            },
+        ]
+    )
+    return blocks
 
 
 def _parse_ids(raw: str) -> list[str]:

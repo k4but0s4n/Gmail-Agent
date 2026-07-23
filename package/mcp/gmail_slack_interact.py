@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Slack Interactivity HTTP endpoint for digest Approve-unsub buttons.
+"""HTTP endpoint for digest Approve-unsub buttons.
 
-Security (fail-closed):
-  - Verify X-Slack-Signature with signing secret
-  - GMAIL_SLACK_APPROVE_USERS allowlist (empty → deny all)
-  - Channel must match GMAIL_SLACK_CHANNEL
-  - Does NOT enable approve on the triage agent (HTTP path only)
+Two modes:
+  1) Signed link (preferred when PUBLIC_BASE + LINK_SECRET set):
+       GET/POST /slack/approve?b=&e=&s=  — confirm page then approve
+  2) Slack Interactivity (optional):
+       POST /slack/interact — verify X-Slack-Signature + allowlist + channel
+
+Does NOT enable approve on the triage agent. Does NOT open a second Socket Mode client.
 
 Bind: GMAIL_SLACK_INTERACT_HOST / GMAIL_SLACK_INTERACT_PORT (default 127.0.0.1:8787)
-Path: POST /slack/interact
 """
 from __future__ import annotations
 
@@ -142,6 +143,51 @@ def summarize_approve(result: dict) -> str:
     return "\n".join(parts)
 
 
+def _html_page(title: str, body_html: str, *, status: int = 200) -> tuple[int, bytes, str]:
+    page = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{title}</title>"
+        "<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;line-height:1.45}"
+        "button{font-size:1.05rem;padding:.6rem 1rem;cursor:pointer}"
+        "code{background:#f2f2f2;padding:.1rem .3rem;border-radius:4px}</style>"
+        f"</head><body><h1>{title}</h1>{body_html}</body></html>"
+    )
+    return status, page.encode(), "text/html; charset=utf-8"
+
+
+def run_link_approve(
+    batch_id: str,
+    *,
+    approve_fn: Callable[[list[str]], dict] | None = None,
+) -> tuple[str, dict]:
+    """Execute approve for a signed-link batch. Returns (summary_text, result)."""
+    import list_unsubscribe_mcp as unsub  # noqa: WPS433
+
+    batch = unsub.load_unsub_draft_batch(batch_id)
+    if not batch:
+        return "Approve failed: batch missing or expired.", {"ok": False, "error": "batch_missing"}
+    ids = list(batch.get("ids") or [])
+    if not ids:
+        return "Approve failed: batch has no pending ids.", {"ok": False, "error": "empty_batch"}
+    do_approve = approve_fn or unsub.approve_unsubscribe
+    try:
+        result = do_approve(ids)
+    except Exception as exc:
+        result = {"ok": False, "error": str(exc), "results": []}
+    text = summarize_approve(result if isinstance(result, dict) else {"ok": False, "error": "bad result"})
+    text = f"*Unsub confirmation* (approved via Slack button)\n{text}"
+    channel = str(batch.get("channel") or expected_channel() or "").strip()
+    if channel:
+        try:
+            import gmail_slack_post as sp  # noqa: WPS433
+
+            sp.post_message(channel, text)
+        except Exception:
+            pass
+    return text, result if isinstance(result, dict) else {"ok": False}
+
+
 def handle_block_actions(
     payload: dict,
     *,
@@ -168,6 +214,11 @@ def handle_block_actions(
     allow = approve_user_allowlist()
     want_channel = expected_channel()
     response_url = str(payload.get("response_url") or "").strip()
+    message = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+    thread_ts = str(message.get("ts") or "").strip()
+    container = payload.get("container") if isinstance(payload.get("container"), dict) else {}
+    if not thread_ts:
+        thread_ts = str(container.get("message_ts") or "").strip()
 
     def deny(msg: str) -> tuple[int, dict, None]:
         body = {"response_type": "ephemeral", "text": msg}
@@ -218,7 +269,16 @@ def handle_block_actions(
         except Exception as exc:
             result = {"ok": False, "error": str(exc), "results": []}
         text = summarize_approve(result if isinstance(result, dict) else {"ok": False, "error": "bad result"})
-        # Prefer in_channel thread reply via response_url (visible to channel).
+        who = f"<@{user_id}>" if user_id else "operator"
+        text = f"*Unsub confirmation* (approved by {who})\n{text}"
+        # Visible channel reply (thread under the digest) via bot token — primary.
+        try:
+            import gmail_slack_post as sp  # noqa: WPS433
+
+            sp.post_message(channel_id or want_channel, text, thread_ts=thread_ts)
+        except Exception:
+            pass
+        # Also ack via response_url when Slack provided one.
         post_response_url(
             response_url,
             {
@@ -275,14 +335,103 @@ class InteractHandler(BaseHTTPRequestHandler):
         if raw:
             self.wfile.write(raw)
 
+    def _write_bytes(self, status: int, raw: bytes, content_type: str) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def _handle_approve_get(self, qs: dict[str, list[str]]) -> None:
+        import gmail_slack_post as sp  # noqa: WPS433
+
+        batch_id = (qs.get("b") or [""])[0].strip()
+        exp = (qs.get("e") or [""])[0].strip()
+        sig = (qs.get("s") or [""])[0].strip()
+        if not sp.verify_approve_link(batch_id, exp, sig):
+            status, raw, ctype = _html_page(
+                "Approve link invalid",
+                "<p>This approve link is invalid or expired. Re-run triage for a fresh button.</p>",
+                status=400,
+            )
+            self._write_bytes(status, raw, ctype)
+            return
+        import list_unsubscribe_mcp as unsub  # noqa: WPS433
+
+        batch = unsub.load_unsub_draft_batch(batch_id)
+        if not batch:
+            status, raw, ctype = _html_page(
+                "Batch expired",
+                "<p>This approve batch is missing or expired. Re-run triage for a fresh button.</p>",
+                status=410,
+            )
+            self._write_bytes(status, raw, ctype)
+            return
+        ids = list(batch.get("ids") or [])
+        items = "".join(f"<li><code>{html_escape(str(i))}</code></li>" for i in ids[:30])
+        form = (
+            f"<p>Confirm unsubscribe for <strong>{len(ids)}</strong> pending id(s):</p>"
+            f"<ul>{items}</ul>"
+            "<form method='POST'>"
+            f"<input type='hidden' name='b' value='{html_escape(batch_id)}'/>"
+            f"<input type='hidden' name='e' value='{html_escape(exp)}'/>"
+            f"<input type='hidden' name='s' value='{html_escape(sig)}'/>"
+            "<button type='submit'>Confirm unsubscribe</button>"
+            "</form>"
+            "<p><small>A confirmation will be posted in Slack after this.</small></p>"
+        )
+        status, raw, ctype = _html_page("Confirm unsub approve", form)
+        self._write_bytes(status, raw, ctype)
+
+    def _handle_approve_post(self) -> None:
+        import gmail_slack_post as sp  # noqa: WPS433
+
+        body = self._read_body()
+        form = urllib.parse.parse_qs(body.decode(errors="replace"), keep_blank_values=True)
+        batch_id = (form.get("b") or [""])[0].strip()
+        exp = (form.get("e") or [""])[0].strip()
+        sig = (form.get("s") or [""])[0].strip()
+        if not sp.verify_approve_link(batch_id, exp, sig):
+            status, raw, ctype = _html_page(
+                "Approve link invalid",
+                "<p>This approve link is invalid or expired.</p>",
+                status=400,
+            )
+            self._write_bytes(status, raw, ctype)
+            return
+        text, result = run_link_approve(batch_id)
+        rows = (result or {}).get("results") or []
+        ok = bool((result or {}).get("ok")) if "ok" in (result or {}) else bool(rows) and all(
+            r.get("ok") for r in rows
+        )
+        if rows:
+            ok = all(r.get("ok") for r in rows)
+        title = "Unsub approved" if ok else "Unsub approve finished with errors"
+        status, raw, ctype = _html_page(
+            title,
+            f"<p>{html_escape(text).replace(chr(10), '<br>')}</p>"
+            "<p>You can close this tab and check Slack for the confirmation.</p>",
+            status=200 if ok else 502,
+        )
+        self._write_bytes(status, raw, ctype)
+
     def do_GET(self) -> None:  # noqa: N802
-        if self.path.split("?", 1)[0] in {"/", "/healthz", "/slack/interact"}:
+        path, _, query = self.path.partition("?")
+        if path in {"/", "/healthz", "/slack/interact"}:
             self._write_json(200, {"ok": True, "service": "gmail-slack-interact"})
+            return
+        if path == "/slack/approve":
+            qs = urllib.parse.parse_qs(query, keep_blank_values=True)
+            self._handle_approve_get(qs)
             return
         self._write_json(404, {"ok": False, "error": "not_found"})
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]
+        if path == "/slack/approve":
+            self._handle_approve_post()
+            return
         if path != "/slack/interact":
             self._write_json(404, {"ok": False, "error": "not_found"})
             return
@@ -315,18 +464,45 @@ class InteractHandler(BaseHTTPRequestHandler):
             threading.Thread(target=background, name="slack-approve", daemon=True).start()
 
 
+def html_escape(s: str) -> str:
+    return (
+        (s or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
 def serve(host: str | None = None, port: int | None = None) -> None:
     host = host or _env("GMAIL_SLACK_INTERACT_HOST", "127.0.0.1") or "127.0.0.1"
     try:
         port = int(port if port is not None else (_env("GMAIL_SLACK_INTERACT_PORT", "8787") or "8787"))
     except ValueError:
         port = 8787
-    if not load_signing_secret():
-        print("WARN: no signing secret configured (all POSTs will 401)", file=sys.stderr)
+    import gmail_slack_post as sp  # noqa: WPS433
+
+    if sp.link_mode_enabled():
+        print(
+            f"link approve enabled base={sp.approve_public_base()}/slack/approve",
+            flush=True,
+        )
+    elif not load_signing_secret():
+        print(
+            "WARN: neither link approve (PUBLIC_BASE+LINK_SECRET) nor Slack signing secret configured",
+            file=sys.stderr,
+        )
     if not approve_user_allowlist():
-        print("WARN: GMAIL_SLACK_APPROVE_USERS empty — approve denied for all users", file=sys.stderr)
+        print(
+            "WARN: GMAIL_SLACK_APPROVE_USERS empty — Slack Interactivity approve denied for all users",
+            file=sys.stderr,
+        )
     httpd = ThreadingHTTPServer((host, port), InteractHandler)
-    print(f"gmail_slack_interact listening on http://{host}:{port}/slack/interact", flush=True)
+    print(
+        f"gmail_slack_interact listening on http://{host}:{port} "
+        "(/slack/approve, /slack/interact)",
+        flush=True,
+    )
     httpd.serve_forever()
 
 
@@ -338,9 +514,9 @@ def main(argv: list[str] | None = None) -> int:
             "Usage: gmail_slack_interact.py\n"
             "  GMAIL_SLACK_INTERACT_HOST (default 127.0.0.1)\n"
             "  GMAIL_SLACK_INTERACT_PORT (default 8787)\n"
-            "  GMAIL_SLACK_SIGNING_SECRET or secrets.json providers.slack.signingSecret\n"
-            "  GMAIL_SLACK_APPROVE_USERS=U…,U… (fail-closed if empty)\n"
-            "  GMAIL_SLACK_CHANNEL (must match click channel)\n"
+            "  Link mode: GMAIL_SLACK_APPROVE_PUBLIC_BASE + GMAIL_SLACK_APPROVE_LINK_SECRET\n"
+            "  Slack mode: GMAIL_SLACK_SIGNING_SECRET + GMAIL_SLACK_APPROVE_USERS\n"
+            "  GMAIL_SLACK_CHANNEL\n"
         )
         return 0
     # Load gmail.env if present (same convention as shell runners).

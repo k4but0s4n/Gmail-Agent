@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -100,7 +101,9 @@ def main() -> None:
         # Fresh batch for approve path
         bid2 = unsub.save_unsub_draft_batch(["p1", "p2"], {"channel": "CCHAN"})
 
-        # --- Block Kit helper ---
+        # --- Block Kit helper (Slack Interactivity mode when link env unset) ---
+        os.environ.pop("GMAIL_SLACK_APPROVE_PUBLIC_BASE", None)
+        os.environ.pop("GMAIL_SLACK_APPROVE_LINK_SECRET", None)
         blocks = slack_post.build_approve_blocks(
             "*Digest*\n_Applied: 1 labels_",
             bid2,
@@ -117,6 +120,35 @@ def main() -> None:
         if any(b.get("type") == "actions" for b in blocks) and blocks.index(actions[0]) < blocks.index(approve_sec[0]):
             fail("button should come after approve preview section")
         ok("approve blocks")
+
+        # --- signed link mode ---
+        os.environ["GMAIL_SLACK_APPROVE_PUBLIC_BASE"] = "https://example.test"
+        os.environ["GMAIL_SLACK_APPROVE_LINK_SECRET"] = "link-secret-test"
+        url = slack_post.sign_approve_link(bid2)
+        if not url.startswith("https://example.test/slack/approve?"):
+            fail(f"bad approve url: {url}")
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+        if not slack_post.verify_approve_link(qs["b"][0], qs["e"][0], qs["s"][0]):
+            fail("fresh link failed verify")
+        if slack_post.verify_approve_link(qs["b"][0], qs["e"][0], "deadbeef"):
+            fail("bad link sig accepted")
+        if slack_post.verify_approve_link(qs["b"][0], str(int(time.time()) - 10), qs["s"][0]):
+            fail("expired link accepted")
+        link_blocks = slack_post.build_approve_blocks("*D*", bid2, approve_lines=["• `p1`"])
+        el = [b for b in link_blocks if b.get("type") == "actions"][0]["elements"][0]
+        if el.get("url") != url and not str(el.get("url") or "").startswith("https://example.test/slack/approve?"):
+            fail(f"link mode button missing url: {el}")
+        if el.get("action_id"):
+            fail("link mode should not set action_id")
+        ok("signed link approve url")
+
+        with mock.patch("gmail_slack_post.post_message", return_value={"ok": True}) as chat_mock:
+            text, result = interact.run_link_approve(bid2, approve_fn=lambda ids: {"ok": True, "results": [{"id": i, "ok": True} for i in ids]})
+            if "Unsub confirmation" not in text or not result.get("ok"):
+                fail(f"link approve bad: {text} {result}")
+            if not chat_mock.called:
+                fail("link approve did not post Slack confirmation")
+        ok("signed link approve + confirmation")
 
         # --- allowlist fail-closed ---
         os.environ["GMAIL_SLACK_APPROVE_USERS"] = ""
@@ -164,7 +196,9 @@ def main() -> None:
                 ],
             }
 
-        with mock.patch.object(interact, "post_response_url", return_value={"ok": True}) as post_mock:
+        with mock.patch.object(interact, "post_response_url", return_value={"ok": True}) as post_mock, mock.patch(
+            "gmail_slack_post.post_message", return_value={"ok": True}
+        ) as chat_mock:
             status, body_json, bg = interact.process_payload(payload, approve_fn=fake_approve)
             if status != 200 or body_json is not None or bg is None:
                 fail(f"approve path should ack empty + background: {status} {body_json} {bg}")
@@ -173,9 +207,13 @@ def main() -> None:
                 fail(f"approve ids wrong: {called}")
             if not post_mock.called:
                 fail("response_url not posted")
+            if not chat_mock.called:
+                fail("chat.postMessage confirmation not posted")
             args = post_mock.call_args[0]
             reply = args[1] if len(args) > 1 else post_mock.call_args[1].get("payload")
             text = (reply or {}).get("text") or ""
+            if "Unsub confirmation" not in text:
+                fail(f"missing confirmation header: {text}")
             if "1 ok" not in text or "1 failed" not in text:
                 fail(f"bad summary text: {text}")
             if "http" in text.lower() and "hooks.slack" in text:

@@ -196,7 +196,7 @@ def main() -> None:
         assert "Chris Shoulet" in st and "Cyber sales networking question" in st, st
         print("ok: finalize success → slack_text with From · Subject")
 
-        # 4) NEWSLETTER digest: both IDs, open-total, already-in-queue, unsub draft
+        # 4) NEWSLETTER digest: pending id only, open-total, already-in-queue
         news = tmp_p / "news.jsonl"
         news_summary = {
             "ok": True,
@@ -294,8 +294,11 @@ def main() -> None:
         assert code == 0, data
         st = data.get("slack_text") or ""
         assert "Unsub queued (this batch): 1 · Open pending total: 7" in st, st
-        assert "`msg_new` · pending:`a5b1c2d3e4f5`" in st, st
-        assert "`msg_old` · pending:`3ef612345678`" in st, st
+        assert "• `a5b1c2d3e4f5`" in st, st
+        assert "• `3ef612345678`" in st, st
+        assert "`msg_new`" not in st, st
+        assert "`msg_old`" not in st, st
+        assert "pending:`" not in st, st
         assert "_(already in queue)_" in st, st
         assert "*Unsub draft*" not in st, st
         assert "Unsub queued: 1" not in st.split("Applied:")[-1] if "Applied:" in st else True, st

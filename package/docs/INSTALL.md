@@ -95,22 +95,31 @@ python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --reject <pending_id>
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
 ```
 
-### Slack Interactivity (Approve button)
+### Slack Approve button
 
-Digests with queued unsubs post a Block Kit **Approve these unsubs** button. Clicks hit a small local HTTP endpoint (`gmail_slack_interact.py`) — **not** a second Socket Mode client (OpenClaw already owns the socket).
+Digests with queued unsubs post Block Kit **Approve these unsubs**. The handler is `gmail_slack_interact.py` — **not** a second Socket Mode client (OpenClaw already owns the socket). After approve, a visible **Unsub confirmation** is posted in the channel.
 
-1. Slack app → **Interactivity** On → Request URL pointing at a public URL that reaches `http://127.0.0.1:8787/slack/interact` (tunnel/reverse-proxy).
-2. Set `GMAIL_SLACK_SIGNING_SECRET` in `gmail.env` **or** `providers.slack.signingSecret` in `secrets.json` (never commit secrets).
-3. Set `GMAIL_SLACK_APPROVE_USERS` to your Slack user id(s) (comma-separated). **Empty = deny all** (fail-closed).
-4. Channel of the click must match `GMAIL_SLACK_CHANNEL`.
-5. Start the endpoint (example unit: [`../openclaw/gmail-slack-interact.service.example`](../openclaw/gmail-slack-interact.service.example)):
+**Preferred — signed link (no Slack signing secret):**
+
+1. Set in `gmail.env`:
+   - `GMAIL_SLACK_APPROVE_PUBLIC_BASE` — HTTPS origin that reaches the host (LAN/VPN Caddy, Tailscale Funnel, etc.)
+   - `GMAIL_SLACK_APPROVE_LINK_SECRET` — long random secret (`openssl rand -hex 32`)
+2. Proxy `/slack/*` → `http://127.0.0.1:8787` on that origin (Caddy `handle` / Funnel / reverse-proxy). On OpenClaw, `gmail_caddy_slack_route.py` can insert the route via Caddy’s admin API.
+3. Start the endpoint (example unit: [`../openclaw/gmail-slack-interact.service.example`](../openclaw/gmail-slack-interact.service.example)).
+4. Button opens `/slack/approve` → **Confirm unsubscribe** → Slack **Unsub confirmation** in-channel.
+5. Browser must reach `GMAIL_SLACK_APPROVE_PUBLIC_BASE` (VPN/LAN or public Funnel).
 
 ```bash
-# foreground smoke
 set -a; source "$OPENCLAW_HOME/gmail.env"; set +a
 python3 "$OPENCLAW_HOME/bin/gmail_slack_interact.py"
 # or: systemctl --user enable --now gmail-slack-interact.service
 ```
+
+**Optional — Slack Interactivity action button:**
+
+1. Slack app → **Interactivity** On → Request URL → `…/slack/interact`.
+2. `GMAIL_SLACK_SIGNING_SECRET` (or `providers.slack.signingSecret`) + `GMAIL_SLACK_APPROVE_USERS` (fail-closed if empty).
+3. Click channel must match `GMAIL_SLACK_CHANNEL`.
 
 Successful approve adds the sender to a **post-unsub watch**. After `GMAIL_POST_UNSUB_GRACE_DAYS` (default 3), `finalize_triage` forces matching mail to `SPAM` (mark-read) and skips re-queueing unsub.
 

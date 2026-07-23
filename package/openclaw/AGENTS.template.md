@@ -59,7 +59,7 @@ Finalize applies `{GMAIL_LABEL_PREFIX}/<CAT>` (default prefix `OC`). Do not inve
 - One count line for all six categories + `Unsub queued (this batch): N · Open pending total: M`.
 - Next line: `session: <SESSION_KEY>`
 - Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER.
-- NEWSLETTER bullets: `` `message_id` · pending:`pending_id` · From · Subject `` (+ _(already in queue)_ / _(already unsubscribed)_ notes).
+- NEWSLETTER bullets: `` `pending_id` · From · Subject `` (+ _(already in queue)_ / _(already unsubscribed)_ notes).
 - Omit FYI / SOCIAL / SPAM from the body (still label them).
 - Include `message_id` on every shown bullet; include pending proposal id when known.
 - No markdown tables. Never approve from Slack (CLI only).

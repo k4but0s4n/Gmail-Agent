@@ -478,13 +478,13 @@ def build_slack_text(
             pid = pending_by_mid.get(mid) or str(it.get("id") or "").strip()
             if mid in already_done_mids and mid not in already_queued_mids and not pid:
                 note = " _(already unsubscribed)_"
-                head = f"• `{mid}`"
+                head = "•"
             elif pid:
                 note = " _(already in queue)_" if mid in already_queued_mids else ""
-                head = f"• `{mid}` · pending:`{pid}`"
+                head = f"• `{pid}`"
             else:
                 note = ""
-                head = f"• `{mid}`"
+                head = "•"
             lines.append(head + (f" · {extra}" if extra else "") + note)
         lines.append("")
 

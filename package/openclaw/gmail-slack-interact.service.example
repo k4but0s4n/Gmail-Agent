@@ -7,10 +7,12 @@
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now gmail-slack-interact.service
 #
-# Put GMAIL_SLACK_SIGNING_SECRET / GMAIL_SLACK_APPROVE_USERS in gmail.env
-# (or secrets.json for the signing secret). Do not put secrets in this unit file.
-# Expose http://127.0.0.1:8787/slack/interact via reverse-proxy/tunnel as the
-# Slack app Interactivity Request URL.
+# Put link-mode vars (preferred) or Slack Interactivity vars in gmail.env:
+#   GMAIL_SLACK_APPROVE_PUBLIC_BASE + GMAIL_SLACK_APPROVE_LINK_SECRET
+#   and/or GMAIL_SLACK_SIGNING_SECRET + GMAIL_SLACK_APPROVE_USERS
+# Do not put secrets in this unit file.
+# Expose http://127.0.0.1:8787 (e.g. `tailscale funnel --bg 8787`) so
+# /slack/approve (link) or /slack/interact (Slack Interactivity) is reachable.
 
 [Unit]
 Description=Gmail Slack Interactivity (unsub Approve button)
