@@ -147,7 +147,7 @@ python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
 
 | Job | Schedule | Role |
 |---|---|---|
-| Triage | every 2h | Light sync + triage pages |
+| Triage | 7am · 5pm · 10pm · 2am ET | Light sync + triage pages |
 | Nightly | early morning | Sync + prune |
 | OAuth refresh | early morning | Token refresh |
 

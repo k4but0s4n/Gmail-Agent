@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- **Digest bullets missing From/Subject** — verify enriches compact finalize items from `list_recent` metadata so Slack matches the prior `id · From · Subject` standard; empty inbox skips Slack post.
+
+### Changed
+- **Triage schedule** — replace every-2h with **7am · 5pm · 10pm · 2am** America/New_York (`gmail-triage-digest` in `cron.example.json`).
+
 ## [0.2.1] — 2026-07-22
 
 ### Fixed

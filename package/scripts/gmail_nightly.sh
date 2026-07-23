@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Nightly Gmail sync + prune. Triage is handled by gmail_triage_2h.sh (every 2h).
+# Nightly Gmail sync + prune. Triage is handled by gmail_triage_2h.sh (scheduled digests).
 set -euo pipefail
 
 OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"

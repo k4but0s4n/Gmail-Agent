@@ -122,7 +122,7 @@ Sync stores Gmail label **IDs** and resolved **names** (`label_names`) so `skip_
 
 | Name | Schedule | Command |
 |---|---|---|
-| `gmail-triage-2h` | every 2h | `gmail_triage_2h.sh` |
+| `gmail-triage-digest` | `0 7,17,22,2 * * *` America/New_York (7am · 5pm · 10pm · 2am) | `gmail_triage_2h.sh` |
 | `gmail-nightly-triage` | 30 6 * * * ET | `gmail_nightly.sh` |
 | `gmail-oauth-refresh` | 0 6 * * * ET | `python3 …/gmail_oauth_refresh.py` |
 

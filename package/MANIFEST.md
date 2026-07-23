@@ -10,7 +10,7 @@
 | `mcp/gmail_prune.py` | Prune old index docs | `CHROMA_URL` |
 | `mcp/gmail_oauth_refresh.py` | Token refresh | Cron daily |
 | `mcp/gmail_e2e_verify_batch.py` | Post-batch verify + orphan finalize recover | `GMAIL_AGENT_ID` |
-| `scripts/gmail_triage_2h.sh` | Production runner (≤50 today, 25/page) | Cron every 2h |
+| `scripts/gmail_triage_2h.sh` | Production runner (≤50 today, 25/page) | Cron 7am · 5pm · 10pm · 2am ET |
 | `scripts/gmail_nightly.sh` | Sync + prune only | |
 | `scripts/gmail_e2e_200.sh` | Chunked e2e harness | Default TOTAL 25 |
 | `scripts/test_post_unsub_watch.py` | Offline e2e for post-unsub → SPAM | No Gmail/network |
@@ -29,7 +29,7 @@
 
 | Name | Schedule | Command |
 |---|---|---|
-| `gmail-triage-2h` | every 2h | `gmail_triage_2h.sh` |
+| `gmail-triage-digest` | 7am · 5pm · 10pm · 2am ET | `gmail_triage_2h.sh` |
 | `gmail-nightly-triage` | 30 6 * * * ET | `gmail_nightly.sh` (sync+prune) |
 | `gmail-oauth-refresh` | 0 6 * * * ET | `gmail_oauth_refresh.py` |
 

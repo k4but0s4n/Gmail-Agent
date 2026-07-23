@@ -38,7 +38,7 @@ Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER. Count line still
 
 | Job | Schedule | Role |
 |---|---|---|
-| Triage | every 2h | Light sync + unread since today, pages of 25 |
+| Triage | 7am · 5pm · 10pm · 2am ET | Light sync + unread since today, pages of 25 |
 | Nightly | early morning | Sync + prune only |
 | OAuth refresh | early morning | Token refresh + expiry warnings |
 

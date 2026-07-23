@@ -2,10 +2,10 @@
   "description": "Example OpenClaw cron registrations for openclaw-gmail-triage. Scripts auto-source $OPENCLAW_HOME/gmail.env when present; also set MCP gateway env to the same vars.",
   "jobs": [
     {
-      "name": "gmail-triage-2h",
-      "schedule": "every 2h",
+      "name": "gmail-triage-digest",
+      "schedule": "cron 0 7,17,22,2 * * * @ America/New_York",
       "command": "$OPENCLAW_HOME/bin/gmail_triage_2h.sh",
-      "notes": "Requires gmail.env with CHROMA_URL, GMAIL_EMBED_URL, GMAIL_RETRIEVE_URL, GMAIL_SLACK_CHANNEL. Pages with offset=0 + skip_seen."
+      "notes": "Business: 7am + 5pm ET. Off-hours: 10pm + 2am ET. Requires gmail.env (CHROMA_URL, GMAIL_EMBED_URL, GMAIL_RETRIEVE_URL, GMAIL_SLACK_CHANNEL, GMAIL_AGENT_ID). Runner posts Slack after verify; skips empty digests."
     },
     {
       "name": "gmail-nightly-triage",

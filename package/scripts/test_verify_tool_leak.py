@@ -83,7 +83,7 @@ def main() -> None:
         assert data.get("tool_call_leaked") is True, data
         print("ok: leaked tool_call → fail+retry")
 
-        # 2) Real empty list_recent — must OK + slack_text
+        # 2) Real empty list_recent — must OK, no Slack digest
         empty = tmp_p / "empty.jsonl"
         write_jsonl(
             empty,
@@ -105,10 +105,10 @@ def main() -> None:
         assert code == 0, data
         assert data.get("ok") is True, data
         assert data.get("listed_count") == 0, data
-        assert "0 messages" in (data.get("slack_text") or ""), data
-        print("ok: genuine empty list_recent → ok + slack_text")
+        assert not (data.get("slack_text") or "").strip(), data
+        print("ok: genuine empty list_recent → ok + no slack_text")
 
-        # 3) Finalize ok with items — slack_text has ACTION bullet
+        # 3) Compact finalize items + list_recent meta → From · Subject bullets
         fin = tmp_p / "fin.jsonl"
         summary = {
             "ok": True,
@@ -126,9 +126,27 @@ def main() -> None:
             "unsub_queued_count": 0,
             "label_failures": [],
         }
+        listed = (
+            "Listed 1 email(s) (offset=0, eligible_total=1, newest-first)\n"
+            "\n[1]\n"
+            "    from:    Chris Shoulet <chris@example.com>\n"
+            "    subject: Cyber sales networking question\n"
+            "    date:    Wed, 22 Jul 2026 12:00:00 -0400\n"
+            "    msg_id:  abc123\n"
+        )
+        # OpenClaw wraps MCP tool text in a JSON envelope
+        listed_envelope = json.dumps(
+            {"tool": {"name": "email_query__list_recent"}, "result": {"content": [{"type": "text", "text": listed}]}}
+        )
         write_jsonl(
             fin,
             [
+                {
+                    "message": {
+                        "role": "toolResult",
+                        "content": [{"type": "text", "text": listed_envelope}],
+                    }
+                },
                 {
                     "message": {
                         "role": "assistant",
@@ -143,8 +161,6 @@ def main() -> None:
                                             {
                                                 "message_id": "abc123",
                                                 "category": "ACTION-REQUIRED",
-                                                "from": "A <a@b.com>",
-                                                "subject": "Please review",
                                             }
                                         ]
                                     },
@@ -159,8 +175,7 @@ def main() -> None:
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Listed 1 email (eligible_total=1).\n"
-                                + json.dumps(summary),
+                                "text": json.dumps(summary),
                             }
                         ],
                     }
@@ -172,7 +187,8 @@ def main() -> None:
         assert data.get("ok") is True, data
         st = data.get("slack_text") or ""
         assert "ACTION-REQUIRED" in st and "abc123" in st, st
-        print("ok: finalize success → slack_text with ACTION")
+        assert "Chris Shoulet" in st and "Cyber sales networking question" in st, st
+        print("ok: finalize success → slack_text with From · Subject")
 
     print("\nALL PASS — verify tool-leak regression")
 

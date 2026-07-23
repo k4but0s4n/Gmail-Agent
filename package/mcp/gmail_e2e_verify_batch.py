@@ -177,6 +177,49 @@ def text_looks_like_leaked_tool_call(text: str) -> bool:
     return False
 
 
+def parse_listed_message_meta(blob: str) -> dict[str, dict[str, str]]:
+    """Parse list_recent tool text into msg_id -> {from, subject}."""
+    meta: dict[str, dict[str, str]] = {}
+    if not blob or "msg_id:" not in blob:
+        return meta
+    # Blocks look like:
+    # [1]
+    #     from:    Name <a@b.com>
+    #     subject: Hello
+    #     msg_id:  abc123
+    for block in re.split(r"\n(?=\[\d+\])", blob):
+        mid_m = re.search(r"msg_id:\s*(\S+)", block)
+        if not mid_m:
+            continue
+        mid = mid_m.group(1).strip()
+        frm_m = re.search(r"from:\s*(.+)", block)
+        sub_m = re.search(r"subject:\s*(.+)", block)
+        meta[mid] = {
+            "from": (frm_m.group(1).strip() if frm_m else "")[:60],
+            "subject": (sub_m.group(1).strip() if sub_m else "")[:80],
+        }
+    return meta
+
+
+def enrich_items_with_meta(items: list | None, listed_meta: dict[str, dict[str, str]]) -> list | None:
+    if not items:
+        return items
+    out = []
+    for it in items:
+        if not isinstance(it, dict):
+            out.append(it)
+            continue
+        row = dict(it)
+        mid = str(row.get("message_id") or "")
+        meta = listed_meta.get(mid) or {}
+        if not row.get("from") and meta.get("from"):
+            row["from"] = meta["from"]
+        if not row.get("subject") and meta.get("subject"):
+            row["subject"] = meta["subject"]
+        out.append(row)
+    return out
+
+
 def extract_tool_events(path: Path) -> dict:
     finalize_ok = False
     orphan_items = None
@@ -186,6 +229,7 @@ def extract_tool_events(path: Path) -> dict:
     list_recent_called = False
     tool_call_leaked = False
     finalize_summary = None
+    listed_meta: dict[str, dict[str, str]] = {}
 
     for o in iter_messages(path):
         msg = o.get("message") or {}
@@ -228,8 +272,22 @@ def extract_tool_events(path: Path) -> dict:
                 elif isinstance(c, str):
                     texts.append(c)
             blob = "\n".join(texts)
+            # Unwrap OpenClaw MCP envelope: {"tool":..., "result":{"content":[{"text":"..."}]}}
+            if blob.lstrip().startswith("{") and '"result"' in blob:
+                try:
+                    env = json.loads(blob)
+                    parts = []
+                    for block in (env.get("result") or {}).get("content") or []:
+                        if isinstance(block, dict) and isinstance(block.get("text"), str):
+                            parts.append(block["text"])
+                    if parts:
+                        blob = "\n".join(parts)
+                except Exception:
+                    pass
             if "Validation failed for tool" in blob:
                 validation_errors += 1
+
+            listed_meta.update(parse_listed_message_meta(blob))
 
             m = re.search(r"Listed\s+(\d+)\s+email", blob)
             if m:
@@ -263,6 +321,7 @@ def extract_tool_events(path: Path) -> dict:
         "list_recent_called": list_recent_called,
         "tool_call_leaked": tool_call_leaked and not list_recent_called,
         "finalize_summary": finalize_summary,
+        "listed_meta": listed_meta,
     }
 
 
@@ -369,7 +428,8 @@ def main():
     list_recent_called = ev["list_recent_called"]
     tool_call_leaked = ev["tool_call_leaked"]
     finalize_summary = ev["finalize_summary"]
-    finalize_items = ev["finalize_items"]
+    finalize_items = enrich_items_with_meta(ev["finalize_items"], ev["listed_meta"])
+    orphan_items = enrich_items_with_meta(orphan_items, ev["listed_meta"])
 
     out = {
         "session_key": args.session_key,
@@ -435,9 +495,8 @@ def main():
     if list_recent_called and listed_count == 0 and validation_errors == 0:
         out["ok"] = True
         out["note"] = "no eligible mail / nothing to finalize"
-        out["slack_text"] = build_slack_text(
-            args.session_key, listed_count=0, summary=None, items=None
-        )
+        # Empty inbox: still ok, but no Slack post (runner skips blank digests).
+        out["slack_text"] = ""
         print(json.dumps(out))
         return 0
 
