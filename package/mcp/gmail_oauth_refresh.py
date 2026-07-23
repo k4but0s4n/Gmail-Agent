@@ -143,7 +143,7 @@ def main() -> int:
             _slack(
                 f":warning: Gmail OAuth refresh FAILED (HTTP {exc.code}). "
                 f"Re-consent required for unverified GCP client. "
-                f"consent_age_days={age_days:.1f}. Run gmail MCP auth on openclaw."
+                f"consent_age_days={age_days:.1f}. Re-run Gmail MCP auth on the OpenClaw host."
             )
             return 2
         return 1

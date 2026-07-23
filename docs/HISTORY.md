@@ -28,9 +28,7 @@ Gmail triage on OpenClaw: list unread mail, categorize, label, queue newsletter/
 
 ### Slack digests
 
-Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER. Count line still shows all six. Posted by the runner after verify (not agent `--deliver`).
-
-**Later (unreleased):** digests add unsub batch + open-pending totals, both Gmail and pending ids on NEWSLETTER bullets, skip notes, and a thread *Unsub draft* for CLI `--approve` (never approve from Slack).
+Bullets **only** for ACTION-REQUIRED (+ URGENT) and pending unsub queue (id + sender). Count line still shows all six. Posted by the runner after verify (not agent `--deliver`). Approve via CLI.
 
 ### Chunked triage (small-model safe)
 
