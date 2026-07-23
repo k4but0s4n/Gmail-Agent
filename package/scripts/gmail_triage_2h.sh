@@ -52,7 +52,7 @@ slack_post() {
 }
 
 slack_post_digest() {
-  # Digest + Approve button (no thread). Arg $2 = path to verify JSON.
+  # Plain-text digest from verify JSON.
   local channel="$1"
   local verify_json="$2"
   [[ -n "$channel" && -f "$verify_json" ]] || return 0

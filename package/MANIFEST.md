@@ -10,8 +10,7 @@
 | `mcp/gmail_prune.py` | Prune old index docs | `CHROMA_URL` |
 | `mcp/gmail_oauth_refresh.py` | Token refresh | Cron daily |
 | `mcp/gmail_e2e_verify_batch.py` | Post-batch verify + orphan finalize recover | `GMAIL_AGENT_ID` |
-| `mcp/gmail_slack_post.py` | Slack digest post + Block Kit Approve button | Used by triage/e2e runners |
-| `mcp/gmail_slack_interact.py` | Slack Interactivity HTTP endpoint | Approve allowlist + sig verify |
+| `mcp/gmail_slack_post.py` | Slack plain-text digest post | Used by triage/e2e runners |
 | `openclaw/gmail-slack-interact.service.example` | systemd --user unit example | Host ops |
 | `scripts/gmail_triage_2h.sh` | Production runner (≤50 today, 25/page) | Cron 7am · 5pm · 10pm · 2am ET |
 | `scripts/gmail_nightly.sh` | Sync + prune only | |
@@ -71,10 +70,6 @@ GMAIL_SYNC_LOOKBACK_DAYS=2
 GMAIL_SYNC_MAX_EMAILS=80
 GMAIL_SLACK_CHANNEL=          # required for triage/e2e
 GMAIL_ALERT_SLACK_CHANNEL=
-GMAIL_SLACK_SIGNING_SECRET=   # or secrets.json providers.slack.signingSecret
-GMAIL_SLACK_APPROVE_USERS=    # fail-closed if empty
-GMAIL_SLACK_INTERACT_HOST=127.0.0.1
-GMAIL_SLACK_INTERACT_PORT=8787
 ```
 
 Scripts source `gmail.env` automatically. MCP servers need the same vars in the gateway environment. See [`docs/INSTALL.md`](docs/INSTALL.md) for allowlist (no `approve_unsubscribe` on triage agent) and CLI approve / watch flow.

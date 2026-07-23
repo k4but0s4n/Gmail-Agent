@@ -17,7 +17,7 @@ Base triage CLI: `python3 "$OPENCLAW_HOME/bin/gmail_triage_ops_mcp.py"`
 |---|---|---|
 | 1 | Propose unsubscribe for this message `[message_id]` `[category]` | `--propose <message_id> [CATEGORY] [--force]` |
 | 2 | List pending to unsubscribe | `--pending` |
-| 3 | Approve unsubscribe `[pending_id]` | `--approve <pending_id>…` **or** digest Slack button **Approve these unsubs** (allowlisted users; see INSTALL Interactivity) |
+| 3 | Approve unsubscribe `[pending_id]` | `--approve <pending_id>…` (ids listed in digest *Pending unsubscribe*) |
 | 4 | Reject unsubscribe `[pending_id]` | `--reject <pending_id>… [--once] [--email]` |
 | 5 | List suppressed senders | `--suppressed` |
 | 6 | Unsuppress this sender/domain `[sender name/email/domain]` | `--unsuppress <key>` |
@@ -37,7 +37,7 @@ Reject defaults: suppress **domain**. Use `--email` for exact address only, or `
 | 9b | Mark this message as SPAM `[gmail_message_id]` | `gmail_triage_ops__finalize_triage` with one `{message_id, category: "SPAM"}` item; confirm label result |
 | 9c | Unsub and mark as SPAM `[gmail_message_id]` | propose (SPAM) then finalize SPAM (or finalize SPAM alone — finalize queues unsub); surface propose note + label ok |
 
-**Approve is human-only** — never from the triage agent. Prefer the digest Slack **Approve these unsubs** button (allowlisted operators via `gmail_slack_interact.py`). CLI fallback: `--approve <pending_id>…`. Digests / thread drafts still list Gmail `message_id` and pending proposal `id`.
+**Approve is human-only** — never from the triage agent. Digests list pending proposal `id` + sender under *Pending unsubscribe*; approve with CLI `--approve <pending_id>…`.
 
 ---
 
@@ -70,8 +70,6 @@ JSON shape: `{ "items": [ { "message_id", "category", "from?", "subject?" }, …
 | 16 | Run nightly sync and prune | `"$OPENCLAW_HOME/bin/gmail_nightly.sh"` |
 | 17 | Run chunked e2e triage | `"$OPENCLAW_HOME/bin/gmail_e2e_200.sh"` |
 | 18 | Verify triage session `[session_key]` | `python3 "$OPENCLAW_HOME/bin/gmail_e2e_verify_batch.py" --session-key <key>` |
-| 18a | Run Slack interactivity endpoint (Approve button) | `python3 "$OPENCLAW_HOME/bin/gmail_slack_interact.py"` |
-
 ---
 
 ## Feature tests

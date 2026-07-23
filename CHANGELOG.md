@@ -8,8 +8,7 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Changed
-- **Slack digest layout** — NEWSLETTER bullets show unsub pending id only; footer is `_Applied: …_`; digests list **Approve will unsubscribe:** above the button; no CLI draft thread.
-- **Approve button wiring** — signed-link mode via `GMAIL_SLACK_APPROVE_PUBLIC_BASE` + `GMAIL_SLACK_APPROVE_LINK_SECRET` (Tailscale Funnel / proxy) with confirm page + channel **Unsub confirmation**; Slack Interactivity remains optional.
+- **Revert Slack Approve button** — digests are plain text again; *Pending unsubscribe* lists `pending_id` + sender only; approve via CLI. Removed `gmail_slack_interact.py` and Block Kit approve UI.
 
 ## [0.3.0] — 2026-07-22
 

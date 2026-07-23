@@ -8,7 +8,7 @@
   - `gmail_triage_ops__finalize_triage` — one-shot labels + unsub queue per page (+ mark NEWSLETTER/SOCIAL read)
   - `gmail__search_emails` / `gmail__read_email` / `gmail__draft_email` — only when user asks
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
-- **Never** call `list_unsubscribe__approve_unsubscribe` or `reject_unsubscribe` — human uses digest **Approve** button or CLI (agent must not approve)
+- **Never** call `list_unsubscribe__approve_unsubscribe` or `reject_unsubscribe` — human approves via CLI (agent must not approve)
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
 - After a prior successful unsub, `finalize_triage` may force matching senders to **SPAM** (past grace). Categorize normally; do not special-case.
 - Always include `from` on finalize items when known — post-unsub watch matching needs it if header fetch fails.
@@ -61,11 +61,11 @@ Borderline: LinkedIn *activity* → SOCIAL; LinkedIn *job/marketing digest* → 
 Large batches: pages of **≤25**, one finalize per page.
 
 ## Slack layout (mandatory) — keep digests short
-**Never markdown tables.** Two messages max (digest + optional unsub-draft thread).
+**Never markdown tables.** One digest message (plain text; no Approve button).
 
 Slack body lists **ONLY**:
 - **ACTION-REQUIRED** (and **URGENT** if any — treat as action)
-- **NEWSLETTER** (for unsub visibility)
+- **Pending unsubscribe** (pending id + sender)
 
 Do **not** list FYI, SOCIAL, or SPAM bullets in Slack (still label them via finalize).
 
@@ -79,18 +79,17 @@ Unsub queued (this batch): N · Open pending total: M
 *ACTION-REQUIRED*
 • `message_id` · From · Subject…
 
-*NEWSLETTER* (queued for unsub / marked read)
-• `pending_id` · From · Subject…
-• `pending_id` · From · Subject… _(already in queue)_
-• From · Subject… _(already unsubscribed)_
+*Pending unsubscribe*
+• `pending_id` · Sender Name <email@domain>
+• `pending_id` · Sender Name <email@domain> _(already in queue)_
 
 _Applied: n labels · n marked read · n failures_
 ```
 
-Runner posts an **Approve will unsubscribe:** list (this batch) plus **Approve these unsubs** button for allowlisted operators. No CLI draft thread. **Never** call `approve_unsubscribe` from the agent.
+**Never** call `approve_unsubscribe` from the agent. Human approves via CLI using the pending ids in the digest.
 
 ### Full report follow-up
-Same restriction: **only ACTION-REQUIRED/URGENT** bullets with `message_id`, and **NEWSLETTER** bullets with unsub `pending_id` only.  
+Same restriction: **only ACTION-REQUIRED/URGENT** bullets with `message_id`, and **Pending unsubscribe** with `pending_id` + sender.  
 One line for omitted counts is OK: `_FYI n · SOCIAL n · SPAM n omitted from digest_`.
 
 ## Slack operator phrases (interactive)
@@ -108,7 +107,7 @@ When the user asks in Slack (not during automated triage batches):
 1. Call `tool_call` id=`gmail_triage_ops__finalize_triage` with one item `{message_id, category: "SPAM"}` (include `from`/`subject` when known). Invoke the meta-tool — **never echo YAML**.
 2. Confirm the label result from the tool response (`ok`, `labels_applied`). If unsub was also requested, propose first (or rely on finalize’s NEWSLETTER/SPAM queue) and still surface the propose note.
 
-Approve is **human-only** (not this agent): digest Slack **Approve these unsubs** button for allowlisted operators, or CLI:
+Approve is **human-only** (not this agent) via CLI:
 `python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve <pending_id>…`
 
 ## Out of scope

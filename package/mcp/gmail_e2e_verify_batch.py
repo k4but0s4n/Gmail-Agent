@@ -338,30 +338,8 @@ def _unsub_pending_ids(summary: dict | None) -> list[str]:
     return ids
 
 
-def build_unsub_approve_lines(summary: dict | None) -> list[str]:
-    """Human-readable lines for what the Approve button will execute (this batch)."""
-    lines: list[str] = []
-    seen: set[str] = set()
-    for key in ("unsub_queued", "unsub_already_queued"):
-        for u in (summary or {}).get(key) or []:
-            if not isinstance(u, dict):
-                continue
-            pid = str(u.get("id") or "").strip()
-            if not pid or pid in seen:
-                continue
-            seen.add(pid)
-            frm = (u.get("from") or "")[:50]
-            sub = (u.get("subject") or "")[:60]
-            extra = " · ".join(x for x in (frm, sub) if x)
-            if extra:
-                lines.append(f"• pending:`{pid}` · {extra}")
-            else:
-                lines.append(f"• pending:`{pid}`")
-    return lines
-
-
 def build_unsub_draft_text(summary: dict | None) -> str:
-    """Unused for Slack posts (kept for API compat). Approve UX is Block Kit only."""
+    """Unused for Slack posts (kept for API compat)."""
     del summary
     return ""
 
@@ -429,69 +407,47 @@ def build_slack_text(
     bullets("URGENT", "URGENT")
     bullets("ACTION-REQUIRED", "ACTION-REQUIRED")
 
-    # Index pending ids by message_id for NEWSLETTER bullets.
-    pending_by_mid: dict[str, str] = {}
+    from_by_mid = {
+        str(it.get("message_id") or "").strip(): str(it.get("from") or "").strip()
+        for it in (by_cat.get("NEWSLETTER") or [])
+        if isinstance(it, dict) and it.get("message_id")
+    }
+
+    # Pending unsub queue: id + sender only (approve via CLI; no Slack button).
+    pending_lines: list[str] = []
+    seen_pids: set[str] = set()
     for key in ("unsub_queued", "unsub_already_queued"):
         for u in (summary or {}).get(key) or []:
             if not isinstance(u, dict):
                 continue
-            mid = str(u.get("message_id") or "").strip()
             pid = str(u.get("id") or "").strip()
-            if mid and pid:
-                pending_by_mid[mid] = pid
-
-    already_queued_mids = {
-        str(u.get("message_id") or "").strip()
-        for u in (summary or {}).get("unsub_already_queued") or []
-        if isinstance(u, dict) and u.get("message_id")
-    }
-    already_done_mids = {
-        str(u.get("message_id") or "").strip()
-        for u in (summary or {}).get("unsub_already_done") or []
-        if isinstance(u, dict) and u.get("message_id")
-    }
-
-    news = list(by_cat.get("NEWSLETTER") or [])
-    if summary:
-        seen_mids = {str(it.get("message_id") or "") for it in news}
-        for u in (
-            (summary.get("unsub_queued") or [])
-            + (summary.get("unsub_already_queued") or [])
-            + (summary.get("unsub_already_done") or [])
-        ):
-            if not isinstance(u, dict):
+            if not pid or pid in seen_pids:
                 continue
-            if (u.get("category") or "").upper() not in {"", "NEWSLETTER"}:
-                continue
-            mid = str(u.get("message_id") or "")
-            if mid and mid not in seen_mids:
-                news.append(u)
-                seen_mids.add(mid)
-
-    if news:
-        lines.append("*NEWSLETTER* (queued for unsub / marked read)")
-        for it in news[:25]:
-            mid = str(it.get("message_id") or "?")
-            frm = (it.get("from") or "")[:60]
-            sub = (it.get("subject") or "")[:80]
-            extra = " · ".join(x for x in (frm, sub) if x)
-            pid = pending_by_mid.get(mid) or str(it.get("id") or "").strip()
-            if mid in already_done_mids and mid not in already_queued_mids and not pid:
-                note = " _(already unsubscribed)_"
-                head = "•"
-            elif pid:
-                note = " _(already in queue)_" if mid in already_queued_mids else ""
-                head = f"• `{pid}`"
+            seen_pids.add(pid)
+            mid = str(u.get("message_id") or "").strip()
+            frm = (u.get("from") or "").strip() or from_by_mid.get(mid, "")
+            note = " _(already in queue)_" if key == "unsub_already_queued" else ""
+            if frm:
+                pending_lines.append(f"• `{pid}` · {frm[:80]}{note}")
             else:
-                note = ""
-                head = "•"
-            lines.append(head + (f" · {extra}" if extra else "") + note)
+                pending_lines.append(f"• `{pid}`{note}")
+    for u in (summary or {}).get("unsub_already_done") or []:
+        if not isinstance(u, dict):
+            continue
+        mid = str(u.get("message_id") or "").strip()
+        frm = (u.get("from") or "").strip() or from_by_mid.get(mid, "")
+        if frm:
+            pending_lines.append(f"• {frm[:80]} _(already unsubscribed)_")
+        else:
+            pending_lines.append("• _(already unsubscribed)_")
+    if pending_lines:
+        lines.append("*Pending unsubscribe*")
+        lines.extend(pending_lines[:25])
         lines.append("")
 
     labels = (summary or {}).get("labels_applied", "?")
     marked = (summary or {}).get("marked_read") or (summary or {}).get("newsletters_marked_read") or 0
     fails = len((summary or {}).get("label_failures") or [])
-    # Footer: apply stats only (unsub counts already shown above; button section lists approve targets).
     lines.append(f"_Applied: {labels} labels · {marked} marked read · {fails} failures_")
 
     return "\n".join(lines).rstrip() + "\n"
@@ -554,9 +510,8 @@ def main():
             summary=finalize_summary,
             items=finalize_items,
         )
-        out["unsub_draft_text"] = ""  # no Slack thread draft; button section lists targets
+        out["unsub_draft_text"] = ""
         out["unsub_pending_ids"] = _unsub_pending_ids(finalize_summary)
-        out["unsub_approve_lines"] = build_unsub_approve_lines(finalize_summary)
         print(json.dumps(out))
         return 0
 
@@ -587,7 +542,6 @@ def main():
             )
             out["unsub_draft_text"] = ""
             out["unsub_pending_ids"] = _unsub_pending_ids(summary)
-            out["unsub_approve_lines"] = build_unsub_approve_lines(summary)
         print(json.dumps(out, indent=2))
         return 0 if summary.get("ok") else 1
 

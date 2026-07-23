@@ -10,7 +10,7 @@ Copy into your OpenClaw agent workspace. Set `GMAIL_AGENT_ID` to match the agent
   - `gmail_triage_ops__finalize_triage` — one-shot labels + unsub queue per page (+ mark NEWSLETTER/SOCIAL read)
   - `gmail__search_emails` / `gmail__read_email` / `gmail__draft_email` — only when user asks
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
-- **Never** call `list_unsubscribe__approve_unsubscribe` — human approves via digest **Approve** button or CLI (not this agent)
+- **Never** call `list_unsubscribe__approve_unsubscribe` — human approves via CLI (not this agent)
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
 - After a prior successful unsub, finalize may force matching senders to **SPAM**. Categorize normally.- **Never fabricate**. **No auto-draft**. Skip bootstrap.
 - If a tool returns `Validation failed`, **retry once** with a correct `tool_call`. Never claim labels/unsub success without a successful finalize result (`ok: true`).
@@ -58,11 +58,10 @@ Finalize applies `{GMAIL_LABEL_PREFIX}/<CAT>` (default prefix `OC`). Do not inve
 ## Slack layout (keep short)
 - One count line for all six categories + `Unsub queued (this batch): N · Open pending total: M`.
 - Next line: `session: <SESSION_KEY>`
-- Bullets **only** for ACTION-REQUIRED (+ URGENT) and NEWSLETTER.
-- NEWSLETTER bullets: `` `pending_id` · From · Subject `` (+ _(already in queue)_ / _(already unsubscribed)_ notes).
+- Bullets **only** for ACTION-REQUIRED (+ URGENT) and *Pending unsubscribe*.
+- Pending unsubscribe bullets: `` `pending_id` · Sender <email> `` (+ _(already in queue)_ notes).
 - Omit FYI / SOCIAL / SPAM from the body (still label them).
-- Include `message_id` on every shown bullet; include pending proposal id when known.
-- No markdown tables. Never approve from Slack (CLI only).
+- No markdown tables. No Approve button. Human approves via CLI only.
 
 ## Slack operator phrases
 - `unsub <gmail_message_id>` → `list_unsubscribe__propose_unsubscribe` (NEWSLETTER, or SPAM if user said spam). Reply with the tool note + pending id / already_in_queue / already_unsubscribed. Never dump runtime context. Never approve.

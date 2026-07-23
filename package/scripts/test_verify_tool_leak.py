@@ -196,7 +196,7 @@ def main() -> None:
         assert "Chris Shoulet" in st and "Cyber sales networking question" in st, st
         print("ok: finalize success → slack_text with From · Subject")
 
-        # 4) NEWSLETTER digest: pending id only, open-total, already-in-queue
+        # 4) Pending unsubscribe digest: id + sender, open-total, already-in-queue
         news = tmp_p / "news.jsonl"
         news_summary = {
             "ok": True,
@@ -294,22 +294,19 @@ def main() -> None:
         assert code == 0, data
         st = data.get("slack_text") or ""
         assert "Unsub queued (this batch): 1 · Open pending total: 7" in st, st
-        assert "• `a5b1c2d3e4f5`" in st, st
-        assert "• `3ef612345678`" in st, st
+        assert "*Pending unsubscribe*" in st, st
+        assert "• `a5b1c2d3e4f5` · Promo <promo@example.com>" in st, st
+        assert "• `3ef612345678` · Digest <digest@example.com> _(already in queue)_" in st, st
         assert "`msg_new`" not in st, st
         assert "`msg_old`" not in st, st
-        assert "pending:`" not in st, st
-        assert "_(already in queue)_" in st, st
+        assert "This week only" not in st, st
         assert "*Unsub draft*" not in st, st
-        assert "Unsub queued: 1" not in st.split("Applied:")[-1] if "Applied:" in st else True, st
+        assert "Approve these unsubs" not in st, st
         assert "Applied:" in st and "marked read" in st, st
         assert not (data.get("unsub_draft_text") or "").strip(), data
         ids = data.get("unsub_pending_ids") or []
         assert "a5b1c2d3e4f5" in ids and "3ef612345678" in ids, ids
-        alines = data.get("unsub_approve_lines") or []
-        assert any("a5b1c2d3e4f5" in x for x in alines), alines
-        assert any("Promo" in x for x in alines), alines
-        print("ok: newsletter digest → pending ids + open-total + approve lines (no draft body)")
+        print("ok: pending unsubscribe digest → id + sender (no button/subject)")
 
     print("\nALL PASS — verify tool-leak regression")
 

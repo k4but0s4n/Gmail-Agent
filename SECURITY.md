@@ -19,7 +19,7 @@ After a human **approves** an unsubscribe, the sender is watched. Past a configu
 5. Prefer `0o600` on state files; scripts already chmod when writing.
 6. Review pending unsubs before `--approve`; one-click targets are re-validated and SSRF-hardened but ESP redirects may fail closed.
 7. Review `--watch` periodically; use `--unwatch` if a legitimate sender was promoted too broadly (domain scope).
-8. Slack digest **Approve** uses `gmail_slack_interact.py` (not a second Socket Mode client). Preferred: HMAC-signed `/slack/approve` link (`GMAIL_SLACK_APPROVE_LINK_SECRET`) with confirm POST + channel confirmation. Optional Slack Interactivity: verify signing secret, fail-closed `GMAIL_SLACK_APPROVE_USERS`, channel must match `GMAIL_SLACK_CHANNEL`.
+8. Unsubscribe approve is **human CLI only** (`list_unsubscribe_mcp.py --approve <pending_id>`). Digests list pending ids + senders in Slack; do not allowlist `approve_unsubscribe` on the triage agent.
 
 ## Reporting issues
 

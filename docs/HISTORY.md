@@ -24,7 +24,7 @@ Gmail triage on OpenClaw: list unread mail, categorize, label, queue newsletter/
 
 **Later (0.2.1):** runners no longer use agent `--deliver`; verify builds `slack_text` and fails closed on leaked `tool_call` YAML (retry once). Reclassify strips sibling `PREFIX/*` labels; SPAM marked read by default.
 
-**Later (0.3.0):** digests show pending unsub ids + open-queue totals; Block Kit **Approve these unsubs** via signed HTTP interactivity (allowlisted users); CLI draft remains as fallback.
+**Later (0.3.0 / reverted button):** digests show pending unsub ids + senders + open-queue totals; approve via CLI (Slack Approve button removed).
 
 ### Slack digests
 
