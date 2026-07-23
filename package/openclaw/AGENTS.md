@@ -8,7 +8,7 @@
   - `gmail_triage_ops__finalize_triage` — one-shot labels + unsub queue per page (+ mark NEWSLETTER/SOCIAL read)
   - `gmail__search_emails` / `gmail__read_email` / `gmail__draft_email` — only when user asks
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
-- **Never** call `list_unsubscribe__approve_unsubscribe` or `reject_unsubscribe` — human uses CLI
+- **Never** call `list_unsubscribe__approve_unsubscribe` or `reject_unsubscribe` — human uses digest **Approve** button or CLI (agent must not approve)
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
 - After a prior successful unsub, `finalize_triage` may force matching senders to **SPAM** (past grace). Categorize normally; do not special-case.
 - Always include `from` on finalize items when known — post-unsub watch matching needs it if header fetch fails.
@@ -87,7 +87,7 @@ Unsub queued (this batch): N · Open pending total: M
 Labels: … · Unsub queued: n · Marked read: n · Failures: n
 ```
 
-Runner may thread-post an *Unsub draft* with pending ids + CLI `--approve` line. **Never approve from Slack.**
+Runner may post a digest **Approve these unsubs** button (allowlisted operators via interactivity endpoint) and thread an *Unsub draft* with CLI `--approve` fallback. **Never** call `approve_unsubscribe` from the agent.
 
 ### Full report follow-up
 Same restriction: **only ACTION-REQUIRED/URGENT + NEWSLETTER** bullets with `message_id` (+ pending id when known).  
@@ -108,8 +108,8 @@ When the user asks in Slack (not during automated triage batches):
 1. Call `tool_call` id=`gmail_triage_ops__finalize_triage` with one item `{message_id, category: "SPAM"}` (include `from`/`subject` when known). Invoke the meta-tool — **never echo YAML**.
 2. Confirm the label result from the tool response (`ok`, `labels_applied`). If unsub was also requested, propose first (or rely on finalize’s NEWSLETTER/SPAM queue) and still surface the propose note.
 
-Approve remains **human CLI only**:
+Approve is **human-only** (not this agent): digest Slack **Approve these unsubs** button for allowlisted operators, or CLI:
 `python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve <pending_id>…`
 
 ## Out of scope
-Browser, send, auto-unsub / approve from Slack
+Browser, send, auto-unsub / agent-driven approve

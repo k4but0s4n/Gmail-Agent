@@ -22,41 +22,26 @@ AGENT_ID="${GMAIL_AGENT_ID:-gmail-triage}"
 OPENCLAW="${OPENCLAW_BIN_CMD:-$(command -v openclaw || echo "$HOME/.npm-global/bin/openclaw")}"
 BIN_DIR="${OPENCLAW_BIN:-$OPENCLAW_HOME/bin}"
 VERIFY="${GMAIL_VERIFY_SCRIPT:-$BIN_DIR/gmail_e2e_verify_batch.py}"
+SLACK_POST="${GMAIL_SLACK_POST_SCRIPT:-$BIN_DIR/gmail_slack_post.py}"
 SECRETS="${OPENCLAW_SECRETS:-$OPENCLAW_HOME/secrets.json}"
 RUN_ID="e2e-${TOTAL}c${CHUNK}-$(date +%Y%m%d-%H%M%S)"
 LOG_DIR="$OPENCLAW_HOME/logs"
 mkdir -p "$LOG_DIR"
 MASTER_LOG="$LOG_DIR/${RUN_ID}.log"
 
-slack_post() {
-  # Prints parent message ts on success (for thread replies). Optional $3 = thread_ts.
+slack_post_digest() {
+  # Digest + optional Approve button + CLI draft thread. Prints parent ts.
   local channel="$1"
   local text="$2"
-  local thread_ts="${3:-}"
+  local unsub_draft="$3"
+  local unsub_ids="$4"
+  local session_key="$5"
   [[ -n "$channel" ]] || return 0
-  OPENCLAW_SECRETS="$SECRETS" /usr/bin/python3 - "$channel" "$text" "$thread_ts" <<'PY' || true
-import json, os, sys, urllib.request
-from pathlib import Path
-channel, text, thread_ts = sys.argv[1], sys.argv[2], sys.argv[3]
-secrets = Path(os.environ["OPENCLAW_SECRETS"])
-token = json.loads(secrets.read_text())["providers"]["slack"]["botToken"]
-payload = {"channel": channel, "text": text}
-if thread_ts:
-    payload["thread_ts"] = thread_ts
-req = urllib.request.Request(
-    "https://slack.com/api/chat.postMessage",
-    data=json.dumps(payload).encode(),
-    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
-    method="POST",
-)
-with urllib.request.urlopen(req, timeout=20) as r:
-    data = json.loads(r.read().decode())
-if data.get("ok"):
-    print(data.get("ts") or "", end="")
-    print(f"slack_ok ts={data.get('ts')}", file=sys.stderr)
-else:
-    print(f"slack_err {data}", file=sys.stderr)
-PY
+  OPENCLAW_SECRETS="$SECRETS" /usr/bin/python3 "$SLACK_POST" \
+    --digest --channel "$channel" --text "$text" \
+    --unsub-draft "$unsub_draft" --unsub-ids "$unsub_ids" \
+    --session-key "$session_key" \
+    2>>"$MASTER_LOG" || true
 }
 
 echo "run=$RUN_ID total=$TOTAL chunk=$CHUNK slack=$GMAIL_CHANNEL agent=$AGENT_ID unread_only+skip_labeled+skip_seen offset=0" | tee "$MASTER_LOG"
@@ -110,11 +95,9 @@ Skip bootstrap. Never fabricate. Never browser. NEVER markdown tables."
       echo "[$(date --iso-8601=seconds)] VERIFY OK batch=$BATCH" | tee -a "$MASTER_LOG"
       SLACK_TEXT=$(printf '%s' "$VERIFY_OUT" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("slack_text") or "")' 2>/dev/null || true)
       UNSUB_DRAFT=$(printf '%s' "$VERIFY_OUT" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("unsub_draft_text") or "")' 2>/dev/null || true)
+      UNSUB_IDS=$(printf '%s' "$VERIFY_OUT" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(",".join(d.get("unsub_pending_ids") or []))' 2>/dev/null || true)
       if [[ -n "$SLACK_TEXT" ]]; then
-        PARENT_TS=$(slack_post "$GMAIL_CHANNEL" "$SLACK_TEXT")
-        if [[ -n "$PARENT_TS" && -n "$UNSUB_DRAFT" ]]; then
-          slack_post "$GMAIL_CHANNEL" "$UNSUB_DRAFT" "$PARENT_TS" >/dev/null || true
-        fi
+        slack_post_digest "$GMAIL_CHANNEL" "$SLACK_TEXT" "$UNSUB_DRAFT" "$UNSUB_IDS" "$SESSION_KEY" >/dev/null || true
       fi
       break
     fi

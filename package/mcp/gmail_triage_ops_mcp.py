@@ -570,7 +570,9 @@ def finalize_triage(items: list) -> dict:
                     "id": ur.get("id"),
                     "status": ur.get("status"),
                     "method": ur.get("method"),
-                    "reason": ur.get("reason") or ur.get("note"),
+                    # Keep machine reason separate from human note (H2).
+                    "reason": ur.get("reason"),
+                    "note": ur.get("note"),
                     "suppressed_key": ur.get("suppressed_key") or ur.get("watch_key"),
                 }
             )

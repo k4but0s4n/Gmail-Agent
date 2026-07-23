@@ -15,7 +15,7 @@ Recurring or on-demand triage of unread Gmail: label, digest, queue unsubs — w
 ## Hard rules
 
 - **Never** send / delete / archive / trash
-- **Never** call `list_unsubscribe__approve_unsubscribe` (human uses CLI)
+- **Never** call `list_unsubscribe__approve_unsubscribe` (human: digest Approve button or CLI)
 - One `gmail_triage_ops__finalize_triage` per page; pages **≤25**
 - Every meta `tool_call` must include `id` (e.g. `gmail_triage_ops__finalize_triage`)
 - Finalize may reclassify post-unsub recidivists as SPAM automatically — categorize normally

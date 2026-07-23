@@ -339,13 +339,14 @@ def _unsub_pending_ids(summary: dict | None) -> list[str]:
 
 
 def build_unsub_draft_text(summary: dict | None) -> str:
-    """CLI-only approve draft for Slack thread reply (never approve from Slack)."""
+    """CLI approve draft for Slack thread reply (button is primary; CLI is fallback)."""
     ids = _unsub_pending_ids(summary)
     if not ids:
         return ""
     id_line = " ".join(f"`{i}`" for i in ids)
     return (
-        "*Unsub draft* (CLI approve only — do not paste to approve in Slack)\n"
+        "*Unsub draft* (prefer the digest **Approve these unsubs** button; "
+        "CLI fallback — do not paste ids into chat to approve)\n"
         "`python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve <id>…`\n"
         f"ids: {id_line}\n"
     )
@@ -546,6 +547,7 @@ def main():
             items=finalize_items,
         )
         out["unsub_draft_text"] = build_unsub_draft_text(finalize_summary)
+        out["unsub_pending_ids"] = _unsub_pending_ids(finalize_summary)
         print(json.dumps(out))
         return 0
 
@@ -575,6 +577,7 @@ def main():
                 items=orphan_items,
             )
             out["unsub_draft_text"] = build_unsub_draft_text(summary)
+            out["unsub_pending_ids"] = _unsub_pending_ids(summary)
         print(json.dumps(out, indent=2))
         return 0 if summary.get("ok") else 1
 

@@ -8,10 +8,13 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **Unsub digest UX** — finalize surfaces `unsub_already_queued` / `unsub_already_done` / `pending_open_total`; Slack digests show batch + open-pending counts, Gmail `message_id` **and** pending proposal id, already-in-queue / already-unsubscribed notes, plus a CLI-only *Unsub draft*; runners thread-post the draft after the digest.
-- **Slack operator phrases** — AGENTS/COMMANDS map `unsub <message_id>` → propose (reply with tool note) and mark-as-SPAM → finalize; approve remains CLI-only.
+- **Slack Approve button** — digests with queued unsubs post Block Kit **Approve these unsubs** via `gmail_slack_post.py`; allowlisted operators hit signed HTTP interactivity endpoint `gmail_slack_interact.py` (not Socket Mode; agent still must not call `approve_unsubscribe`). Batch ids stored under `$GMAIL_UNSUB_STATE/unsub_draft_batches/` with TTL.
+- **Unsub digest UX** — finalize surfaces `unsub_already_queued` / `unsub_already_done` / `pending_open_total`; Slack digests show batch + open-pending counts, Gmail `message_id` **and** pending proposal id, already-in-queue / already-unsubscribed notes, plus a CLI *Unsub draft* thread fallback; runners post digest (+ button) after verify.
+- **Slack operator phrases** — AGENTS/COMMANDS map `unsub <message_id>` → propose (reply with tool note) and mark-as-SPAM → finalize; approve is human-only (button or CLI).
 
 ### Fixed
+- **`list_pending(limit=0)`** — `limit or 50` treated `0` as default 50; `0` now returns an empty page (`returned=0`).
+- **Finalize unsub skip reasons** — keep machine `reason` separate from human `note` so `already_in_queue` / `already_unsubscribed` classify correctly.
 - **Digest bullets missing From/Subject** — verify enriches compact finalize items from `list_recent` metadata so Slack matches the prior `id · From · Subject` standard; empty inbox skips Slack post.
 - **`list_pending` count** — `count` / `open_total` are open-status totals (not the sliced page length); adds `returned` for page size.
 

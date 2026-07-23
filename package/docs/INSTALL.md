@@ -21,11 +21,12 @@ mkdir -p "$OPENCLAW_HOME/bin" "$OPENCLAW_HOME/gmail" "$OPENCLAW_HOME/logs" "$OPE
 cp package/mcp/*.py "$OPENCLAW_HOME/bin/"
 cp package/scripts/gmail_triage_2h.sh package/scripts/gmail_nightly.sh \
   package/scripts/gmail_e2e_200.sh "$OPENCLAW_HOME/bin/"
-chmod +x "$OPENCLAW_HOME/bin/"*.sh
+chmod +x "$OPENCLAW_HOME/bin/"*.sh "$OPENCLAW_HOME/bin/"*.py
 chmod 700 "$OPENCLAW_HOME/gmail" "$OPENCLAW_HOME/run"
 ```
 
 `_config.py` must sit next to the other Python modules in `$OPENCLAW_HOME/bin/`.
+Also deploy `gmail_slack_post.py` and `gmail_slack_interact.py` (digest Approve button).
 
 ## 2. Env file
 
@@ -85,13 +86,30 @@ Include:
 - `list_unsubscribe__unsuppress_sender`
 - `list_unsubscribe__clear_post_unsub_watch`
 
-Approve/reject via CLI (human gate):
+Approve/reject via **CLI** or the digest Slack **Approve these unsubs** button (allowlisted users only). Never allowlist `approve_unsubscribe` on the triage agent.
 
 ```bash
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --pending
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --approve <pending_id>
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --reject <pending_id>
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --watch
+```
+
+### Slack Interactivity (Approve button)
+
+Digests with queued unsubs post a Block Kit **Approve these unsubs** button. Clicks hit a small local HTTP endpoint (`gmail_slack_interact.py`) — **not** a second Socket Mode client (OpenClaw already owns the socket).
+
+1. Slack app → **Interactivity** On → Request URL pointing at a public URL that reaches `http://127.0.0.1:8787/slack/interact` (tunnel/reverse-proxy).
+2. Set `GMAIL_SLACK_SIGNING_SECRET` in `gmail.env` **or** `providers.slack.signingSecret` in `secrets.json` (never commit secrets).
+3. Set `GMAIL_SLACK_APPROVE_USERS` to your Slack user id(s) (comma-separated). **Empty = deny all** (fail-closed).
+4. Channel of the click must match `GMAIL_SLACK_CHANNEL`.
+5. Start the endpoint (example unit: [`../openclaw/gmail-slack-interact.service.example`](../openclaw/gmail-slack-interact.service.example)):
+
+```bash
+# foreground smoke
+set -a; source "$OPENCLAW_HOME/gmail.env"; set +a
+python3 "$OPENCLAW_HOME/bin/gmail_slack_interact.py"
+# or: systemctl --user enable --now gmail-slack-interact.service
 ```
 
 Successful approve adds the sender to a **post-unsub watch**. After `GMAIL_POST_UNSUB_GRACE_DAYS` (default 3), `finalize_triage` forces matching mail to `SPAM` (mark-read) and skips re-queueing unsub.

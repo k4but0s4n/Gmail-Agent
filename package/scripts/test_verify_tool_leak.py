@@ -300,7 +300,8 @@ def main() -> None:
         assert "*Unsub draft*" in st and "--approve" in st, st
         draft = data.get("unsub_draft_text") or ""
         assert "a5b1c2d3e4f5" in draft and "3ef612345678" in draft, draft
-        assert "CLI approve only" in draft, draft
+        assert "Approve these unsubs" in draft or "CLI fallback" in draft, draft
+        assert "--approve" in draft, draft
         print("ok: newsletter digest → pending ids + open-total + already-in-queue + draft")
 
     print("\nALL PASS — verify tool-leak regression")

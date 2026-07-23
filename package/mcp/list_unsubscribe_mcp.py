@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import urllib.error
@@ -24,6 +25,10 @@ PENDING_FILE = STATE_DIR / "unsubscribe_pending.json"
 SEEN_FILE = STATE_DIR / "unsubscribe_seen.json"
 SUPPRESSED_FILE = STATE_DIR / "unsubscribe_suppressed_senders.json"
 WATCH_FILE = STATE_DIR / "unsubscribe_watch.json"
+DRAFT_BATCHES_DIR = STATE_DIR / "unsub_draft_batches"
+# Slack button value is a batch_id; batches expire so stale buttons cannot approve forever.
+DRAFT_BATCH_TTL_SECONDS = int(os.environ.get("GMAIL_UNSUB_BATCH_TTL_DAYS", "7") or "7") * 86400
+_BATCH_ID_RE = re.compile(r"^[a-f0-9]{16,64}$")
 
 AUTO_CATEGORIES = {"NEWSLETTER", "SPAM"}
 ALLOWED_CATEGORIES = {"NEWSLETTER", "SPAM", "FYI", "SOCIAL", "URGENT", "ACTION-REQUIRED", "USER"}
@@ -286,6 +291,70 @@ def load_pending() -> dict:
 
 def save_pending(data: dict) -> None:
     save_json(PENDING_FILE, data)
+
+
+def draft_batches_dir() -> Path:
+    """Directory for Slack Approve button → pending-id batches."""
+    d = DRAFT_BATCHES_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    try:
+        d.chmod(0o700)
+    except OSError:
+        pass
+    return d
+
+
+def save_unsub_draft_batch(ids: list[str], meta: dict | None = None) -> str:
+    """Persist pending ids for a Slack Approve button. Returns batch_id."""
+    clean: list[str] = []
+    for raw in ids or []:
+        pid = str(raw or "").strip()
+        if pid and pid not in clean:
+            clean.append(pid)
+    if not clean:
+        raise ValueError("ids required to save unsub draft batch")
+    meta = meta or {}
+    batch_id = secrets.token_hex(16)
+    payload = {
+        "ids": clean,
+        "session_key": str(meta.get("session_key") or ""),
+        "created_ts": float(time.time()),
+        "channel": str(meta.get("channel") or ""),
+    }
+    path = draft_batches_dir() / f"{batch_id}.json"
+    save_json(path, payload)
+    return batch_id
+
+
+def load_unsub_draft_batch(batch_id: str) -> dict | None:
+    """Load a draft batch; returns None if missing/invalid/expired (TTL cleanup)."""
+    bid = (batch_id or "").strip().lower()
+    if not _BATCH_ID_RE.match(bid):
+        return None
+    path = draft_batches_dir() / f"{bid}.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    try:
+        created = float(data.get("created_ts") or 0)
+    except (TypeError, ValueError):
+        created = 0.0
+    if created <= 0 or (time.time() - created) > DRAFT_BATCH_TTL_SECONDS:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return None
+    ids = [str(x).strip() for x in (data.get("ids") or []) if str(x).strip()]
+    if not ids:
+        return None
+    data["ids"] = ids
+    return data
 
 
 def load_seen() -> dict:
@@ -1056,7 +1125,13 @@ def list_pending(limit: int = 50) -> dict:
     # newest first
     items.sort(key=lambda x: x.get("ts", ""), reverse=True)
     open_total = len(items)
-    page = items[: max(1, int(limit or 50))]
+    # Treat limit=0 as empty page; do not coerce 0 → default via `limit or 50`.
+    try:
+        lim = 50 if limit is None else int(limit)
+    except (TypeError, ValueError):
+        lim = 50
+    lim = max(0, lim)
+    page = items[:lim]
     return {
         "count": open_total,
         "returned": len(page),

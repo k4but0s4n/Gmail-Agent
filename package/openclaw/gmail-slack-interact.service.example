@@ -1,0 +1,31 @@
+# Example systemd --user unit for the Slack Interactivity approve endpoint.
+# Copy to ~/.config/systemd/user/gmail-slack-interact.service and edit paths.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp package/openclaw/gmail-slack-interact.service.example \
+#      ~/.config/systemd/user/gmail-slack-interact.service
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now gmail-slack-interact.service
+#
+# Put GMAIL_SLACK_SIGNING_SECRET / GMAIL_SLACK_APPROVE_USERS in gmail.env
+# (or secrets.json for the signing secret). Do not put secrets in this unit file.
+# Expose http://127.0.0.1:8787/slack/interact via reverse-proxy/tunnel as the
+# Slack app Interactivity Request URL.
+
+[Unit]
+Description=Gmail Slack Interactivity (unsub Approve button)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=OPENCLAW_HOME=%h/.openclaw
+Environment=GMAIL_ENV_FILE=%h/.openclaw/gmail.env
+# Source env file via bash wrapper so gmail.env is applied
+ExecStart=/bin/bash -lc 'set -a; source "${GMAIL_ENV_FILE:-$HOME/.openclaw/gmail.env}"; set +a; exec /usr/bin/python3 "$HOME/.openclaw/bin/gmail_slack_interact.py"'
+Restart=on-failure
+RestartSec=5
+# Bind defaults: 127.0.0.1:8787 (override in gmail.env)
+
+[Install]
+WantedBy=default.target
