@@ -7,6 +7,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-22
+
 ### Added
 - **Slack Approve button** — digests with queued unsubs post Block Kit **Approve these unsubs** via `gmail_slack_post.py`; allowlisted operators hit signed HTTP interactivity endpoint `gmail_slack_interact.py` (not Socket Mode; agent still must not call `approve_unsubscribe`). Batch ids stored under `$GMAIL_UNSUB_STATE/unsub_draft_batches/` with TTL.
 - **Unsub digest UX** — finalize surfaces `unsub_already_queued` / `unsub_already_done` / `pending_open_total`; Slack digests show batch + open-pending counts, Gmail `message_id` **and** pending proposal id, already-in-queue / already-unsubscribed notes, plus a CLI *Unsub draft* thread fallback; runners post digest (+ button) after verify.
@@ -87,6 +89,7 @@ First public-ready release of **openclaw-gmail-triage**: stdlib MCP servers, cro
 - Bind Chroma/embed/retrieve carefully; treat them as trusted internal services.
 - Never commit `credentials.json`, `gcp-oauth.keys.json`, `secrets.json`, or a filled-in `gmail.env`.
 
+[0.3.0]: https://github.com/k4but0s4n/Gmail-Agent/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/k4but0s4n/Gmail-Agent/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/k4but0s4n/Gmail-Agent/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/k4but0s4n/Gmail-Agent/releases/tag/v0.1.0

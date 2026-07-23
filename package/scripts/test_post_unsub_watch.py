@@ -17,8 +17,14 @@ import tempfile
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-MCP = ROOT / "mcp"
+HERE = Path(__file__).resolve().parent
+# Repo layout: package/scripts/… → package/mcp/; OpenClaw deploy: …/bin/*.py beside this test.
+if (HERE.parent / "mcp" / "list_unsubscribe_mcp.py").exists():
+    MCP = HERE.parent / "mcp"
+elif (HERE / "list_unsubscribe_mcp.py").exists():
+    MCP = HERE
+else:
+    raise SystemExit(f"Cannot locate MCP modules near {HERE}")
 UNSUB = MCP / "list_unsubscribe_mcp.py"
 TRIAGE = MCP / "gmail_triage_ops_mcp.py"
 
