@@ -15,8 +15,8 @@ Recurring or on-demand triage of unread Gmail: label, digest, queue unsubs — w
 ## Hard rules
 
 - **Never** send / delete / archive / trash
-- **Never** call `list_unsubscribe__approve_unsubscribe` (human: CLI only)
-- Slack operator may call reject / suppress / unsuppress / list suppressed when asked
+- Slack `approve <pending_id>` → `approve_unsubscribe` (operator-explicit only; never in triage cron)
+- Slack operator may also call reject / suppress / unsuppress / list suppressed when asked
 - One `gmail_triage_ops__finalize_triage` per page; pages **≤25**
 - Every meta `tool_call` must include `id` (e.g. `gmail_triage_ops__finalize_triage`)
 - Finalize may reclassify post-unsub recidivists as SPAM automatically — categorize normally
@@ -43,7 +43,9 @@ Recurring or on-demand triage of unread Gmail: label, digest, queue unsubs — w
 
 ## Setup
 
-See the repository [`docs/INSTALL.md`](../docs/INSTALL.md): env file, OAuth, `openclaw mcp add`, allowlist (no approve), cron. Unsub approve:
+See the repository [`docs/INSTALL.md`](../docs/INSTALL.md): env file, OAuth, `openclaw mcp add`, allowlist, cron.
+
+Unsub execute: Slack `approve <pending_id>`, or CLI:
 
 ```bash
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --pending

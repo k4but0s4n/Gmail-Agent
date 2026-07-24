@@ -75,6 +75,7 @@ Include:
 - `gmail_triage_ops__finalize_triage`
 - `list_unsubscribe__propose_unsubscribe`
 - `list_unsubscribe__list_pending_unsubscribes`
+- `list_unsubscribe__approve_unsubscribe` (Slack `approve <pending_id>` only — never during triage cron)
 - `list_unsubscribe__reject_unsubscribe`
 - `list_unsubscribe__suppress_sender`
 - `list_unsubscribe__unsuppress_sender`
@@ -84,10 +85,9 @@ Include:
 
 **Do not** allowlist on the triage agent:
 
-- `list_unsubscribe__approve_unsubscribe`
 - `list_unsubscribe__clear_post_unsub_watch` (optional; prefer CLI)
 
-Approve via **CLI** using pending ids shown in the Slack digest. Never allowlist `approve_unsubscribe` on the triage agent. Reject / suppress / unsuppress may be invoked from Slack operator phrases.
+Slack operator phrases may approve / reject / suppress / unsuppress. Automated triage must never auto-approve.
 
 ```bash
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --pending
@@ -161,4 +161,4 @@ GMAIL_TRIAGE_TOTAL=25 GMAIL_TRIAGE_CHUNK=25 "$OPENCLAW_HOME/bin/gmail_triage_2h.
 - **Missing URL env** → scripts/MCP raise required-env errors.
 - **Wrong collection** → set `GMAIL_CHROMA_COLLECTION`.
 - **MCP without env** → gateway must inherit `gmail.env` vars.
-- **Never** allowlist `approve_unsubscribe` on the triage agent or expand to 200 one-shot triage on weak tool-callers.
+- **Never** auto-approve in triage cron; Slack `approve <pending_id>` is operator-explicit only. Avoid 200 one-shot triage on weak tool-callers.

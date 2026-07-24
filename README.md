@@ -79,7 +79,7 @@ Full operator command list (imperative phrases + invocations): [`package/docs/CO
 ## Safety
 
 - No send / delete / trash / archive in triage flows
-- Unsubscribe is **propose → human approve** (CLI; digests list pending ids + senders); do not allowlist `approve_unsubscribe` on the triage agent
+- Unsubscribe is **propose → human approve** (Slack `approve <pending_id>` or CLI; digests list pending ids + senders); never auto-approve in triage
 - Finalize is the only batch mutator during triage
 - One-click unsub: HTTPS only, no redirects, private hosts blocked
 - Small models: page size ≤25 + compact finalize + post-batch verify

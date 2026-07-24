@@ -72,4 +72,4 @@ GMAIL_SLACK_CHANNEL=          # required for triage/e2e
 GMAIL_ALERT_SLACK_CHANNEL=
 ```
 
-Scripts source `gmail.env` automatically. MCP servers need the same vars in the gateway environment. See [`docs/INSTALL.md`](docs/INSTALL.md) for allowlist (no `approve_unsubscribe` on triage agent) and CLI approve / watch flow.
+Scripts source `gmail.env` automatically. MCP servers need the same vars in the gateway environment. See [`docs/INSTALL.md`](docs/INSTALL.md) for allowlist (Slack `approve` is operator-explicit; never auto-approve in triage) and CLI approve / watch flow.

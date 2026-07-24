@@ -92,10 +92,11 @@ TOOLS = [
     {
         "name": "approve_unsubscribe",
         "description": (
-            "Execute unsubscribe(s) AFTER the human explicitly approved. "
-            "Accepts pending proposal ids only (from list_pending_unsubscribes). "
-            "Does not auto-propose. Prefer CLI: python3 list_unsubscribe_mcp.py --approve <pending_id>. "
-            "Never invent ids. Triage agents must not call this tool."
+            "Execute unsubscribe(s) after the human explicitly asks to approve. "
+            "Accepts pending proposal ids only (from list_pending_unsubscribes / digest). "
+            "Does not auto-propose. Never invent ids. "
+            "Call only when the operator says `approve <pending_id>` in Slack (or CLI --approve). "
+            "Never call during automated triage batches."
         ),
         "inputSchema": {
             "type": "object",
@@ -979,8 +980,8 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
             "note": (
                 f"Already in queue (`{status}`) — pending id `{token}`"
                 + (f" · {frm}" if frm else "")
-                + ". Approve via CLI: "
-                f"`python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve {token}`"
+                + f". To unsubscribe now in Slack: `approve {token}`"
+                + f" (CLI: `python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve {token}`)"
             ),
         }
 
@@ -1067,7 +1068,11 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
                 "message_id": message_id,
                 "executed": False,
                 "first_seen": False,
-                "note": f"Skipped — already in unsubscribe queue ({st}).",
+                "note": (
+                    f"Skipped — already in unsubscribe queue ({st}) — pending id `{existing.get('id')}`."
+                    f" To unsubscribe now in Slack: `approve {existing.get('id')}`"
+                    f" (CLI: `python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve {existing.get('id')}`)"
+                ),
             }
         if st in {"done", "rejected"} and not force:
             return {
@@ -1435,7 +1440,20 @@ def approve_unsubscribe(ids: list[str]) -> dict:
 
     save_pending(pending)
     save_seen(seen)
-    return {"ok": all(r.get("ok") for r in results) if results else False, "results": results}
+    ok_all = all(r.get("ok") for r in results) if results else False
+    parts = []
+    for r in results[:20]:
+        pid = r.get("id") or r.get("pending_id") or r.get("input") or "?"
+        frm = ""
+        item = (pending.get("items") or {}).get(str(pid)) or {}
+        if item.get("from"):
+            frm = f" · {str(item.get('from'))[:60]}"
+        if r.get("ok"):
+            parts.append(f"• `{pid}`{frm} — unsubscribed ({r.get('status') or r.get('method') or 'ok'})")
+        else:
+            parts.append(f"• `{pid}`{frm} — fail: {str(r.get('error') or 'failed')[:100]}")
+    note = "Unsub approve:\n" + "\n".join(parts) if parts else "Unsub approve: no results"
+    return {"ok": ok_all, "results": results, "note": note}
 
 
 def reject_unsubscribe(

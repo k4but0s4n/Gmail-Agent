@@ -47,4 +47,4 @@ python3 package/scripts/test_post_unsub_watch.py
 # cd "$OPENCLAW_HOME/bin" && python3 e2e_post_unsub_live.py
 ```
 
-Do not commit secrets. Triage agents must not allowlist `approve_unsubscribe` or `clear_post_unsub_watch`.
+Do not commit secrets. Prefer not to allowlist `clear_post_unsub_watch`. `approve_unsubscribe` is for Slack `approve <pending_id>` / CLI only — never auto-approve in triage.

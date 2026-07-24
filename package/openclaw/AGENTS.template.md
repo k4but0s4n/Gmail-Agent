@@ -10,10 +10,11 @@ Copy into your OpenClaw agent workspace. Set `GMAIL_AGENT_ID` to match the agent
   - `gmail_triage_ops__finalize_triage` — one-shot labels + unsub queue per page (+ mark NEWSLETTER/SOCIAL read)
   - `gmail__search_emails` / `gmail__read_email` / `gmail__draft_email` — only when user asks
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
-  - `list_unsubscribe__reject_unsubscribe` / `list_unsubscribe__suppress_sender` / `list_unsubscribe__unsuppress_sender` / `list_unsubscribe__list_suppressed_senders` — only when the user asks in Slack
-- **Never** call `list_unsubscribe__approve_unsubscribe` — human approves via CLI (not this agent)
+  - `list_unsubscribe__approve_unsubscribe` / `list_unsubscribe__reject_unsubscribe` / `list_unsubscribe__suppress_sender` / `list_unsubscribe__unsuppress_sender` / `list_unsubscribe__list_suppressed_senders` — only when the user asks in Slack
+- **Never** auto-approve during triage — only on explicit Slack `approve <pending_id>`
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
-- After a prior successful unsub, finalize may force matching senders to **SPAM**. Categorize normally.- **Never fabricate**. **No auto-draft**. Skip bootstrap.
+- After a prior successful unsub, finalize may force matching senders to **SPAM**. Categorize normally.
+- **Never fabricate**. **No auto-draft**. Skip bootstrap.
 - If a tool returns `Validation failed`, **retry once** with a correct `tool_call`. Never claim labels/unsub success without a successful finalize result (`ok: true`).
 
 ## tool_call format (mandatory)
@@ -62,10 +63,11 @@ Finalize applies `{GMAIL_LABEL_PREFIX}/<CAT>` (default prefix `OC`). Do not inve
 - Bullets **only** for ACTION-REQUIRED (+ URGENT) and *Pending unsubscribe*.
 - Pending unsubscribe bullets: `` `pending_id` · Sender <email> `` (+ _(already in queue)_ notes).
 - Omit FYI / SOCIAL / SPAM from the body (still label them).
-- No markdown tables. No Approve button. Human approves via CLI only.
+- No markdown tables. No Approve button. Operator says `approve <pending_id>` in Slack (or CLI).
 
 ## Slack operator phrases
-- `unsub <id>` → `list_unsubscribe__propose_unsubscribe`. Digest pending ids return `already_in_queue` + CLI `--approve` hint; Gmail message ids get queued. Reply with the tool note only. Never approve.
+- `unsub <id>` → `list_unsubscribe__propose_unsubscribe`. Digest pending ids return `already_in_queue` + hint to `approve <id>`; Gmail message ids get queued. Reply with the tool note only.
+- `approve <pending_id>` → `list_unsubscribe__approve_unsubscribe` (executes unsub). Reply with tool note. Never approve unless the user said approve.
 - `reject <pending_id>` → `list_unsubscribe__reject_unsubscribe` (domain suppress default; `email` / `once` modifiers). Reply short status.
 - `suppress <domain-or-email>` → `list_unsubscribe__suppress_sender` (dismisses matching pending). `list suppressed` / `unsuppress <key>` for list/undo.
 - `mark <gmail_message_id> as SPAM` → real `gmail_triage_ops__finalize_triage` tool_call for that one item; confirm label result. Never echo YAML.

@@ -8,7 +8,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- **Slack reject / suppress / unsuppress** — operator phrases call `reject_unsubscribe`, new `suppress_sender` (domain/email + dismiss matching pending), `list_suppressed_senders`, and `unsuppress_sender`. Approve remains CLI-only.
+- **Slack `approve <pending_id>`** — operator-explicit execute via `approve_unsubscribe` (also CLI `--approve`). Never during automated triage.
+- **Slack reject / suppress / unsuppress** — operator phrases call `reject_unsubscribe`, new `suppress_sender` (domain/email + dismiss matching pending), `list_suppressed_senders`, and `unsuppress_sender`.
 - **CLI `--suppress KEY [--email]`** — exclude a domain or address and dismiss matching open pending.
 
 ### Changed
