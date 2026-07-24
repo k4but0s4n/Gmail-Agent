@@ -10,6 +10,7 @@
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
   - `list_unsubscribe__approve_unsubscribe` / `list_unsubscribe__reject_unsubscribe` / `list_unsubscribe__suppress_sender` / `list_unsubscribe__unsuppress_sender` / `list_unsubscribe__list_suppressed_senders` — only when the user asks in Slack (operator phrases below)
 - **Never** call `approve_unsubscribe` during automated triage batches — only on explicit Slack `approve <pending_id>`
+- **Never** call `propose_unsubscribe` when the user said `suppress` / `exclude` / `never unsub` — that is `suppress_sender` only
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
 - After a prior successful unsub, `finalize_triage` may force matching senders to **SPAM** (past grace). Categorize normally; do not special-case.
 - Always include `from` on finalize items when known — post-unsub watch matching needs it if header fetch fails.
@@ -94,7 +95,32 @@ Same restriction: **only ACTION-REQUIRED/URGENT** bullets with `message_id`, and
 One line for omitted counts is OK: `_FYI n · SOCIAL n · SPAM n omitted from digest_`.
 
 ## Slack operator phrases (interactive)
-When the user asks in Slack (not during automated triage batches):
+When the user asks in Slack (not during automated triage batches).
+
+### Route by first verb (hard — do not mix)
+| User says | Call **only** this tool | Never |
+|---|---|---|
+| `suppress …` / `exclude …` / `never unsub …` | `list_unsubscribe__suppress_sender` | propose / approve / reject |
+| `unsuppress …` / `allow unsub …` | `list_unsubscribe__unsuppress_sender` | propose |
+| `list suppressed` / `show suppressed` | `list_unsubscribe__list_suppressed_senders` | propose |
+| `approve …` | `list_unsubscribe__approve_unsubscribe` | propose |
+| `reject …` / `dismiss …` | `list_unsubscribe__reject_unsubscribe` | propose / suppress_sender |
+| `unsub <id>` / `unsubscribe <id>` | `list_unsubscribe__propose_unsubscribe` | approve (unless they also said approve) |
+
+`suppress apple.com` is **not** unsubscribe. It means exclude that domain from future unsub proposes and dismiss matching pending. Reply must look like `Suppressed \`apple.com\` (domain); …` — never `Queued for approval`.
+
+### `suppress <domain-or-email>` / `exclude <domain-or-email>`
+1. Call `tool_call` id=`list_unsubscribe__suppress_sender` with `key` = that domain or email (e.g. `apple.com`).
+2. Default `scope=domain`. Use `suppress email <address>` → `scope=email`.
+3. Reply with the tool `note` only.
+
+### `list suppressed` / `show suppressed`
+1. Call `tool_call` id=`list_unsubscribe__list_suppressed_senders`.
+2. Reply with a short list of keys (domain/email) — no dumps of full JSON.
+
+### `unsuppress <domain-or-email>` / `allow unsub <domain-or-email>`
+1. Call `tool_call` id=`list_unsubscribe__unsuppress_sender` with `key` = that exact suppressed key.
+2. Reply with ok / removed key, or the tool error if not found.
 
 ### `unsub <id>` / `unsubscribe <id>`
 Digests show **pending proposal ids** (short hex). Gmail **message ids** are longer hex.
@@ -124,19 +150,6 @@ Digests show **pending proposal ids** (short hex). Gmail **message ids** are lon
    - `reject <pending_id> email` / `reject email <pending_id>` → `suppress_scope=email`
    - `reject once <pending_id>` / `dismiss once <pending_id>` → `suppress_sender=false` (no future exclude)
 4. Reply with a short note: rejected id, suppressed key/scope (if any), and any `also_dismissed_ids`.
-
-### `suppress <domain-or-email>` / `exclude <domain-or-email>`
-1. Call `tool_call` id=`list_unsubscribe__suppress_sender` with `key` = that domain or email.
-2. Default `scope=domain`. Use `suppress email <address>` → `scope=email`.
-3. This excludes future proposes and dismisses matching open pending. Reply with the tool `note`.
-
-### `list suppressed` / `show suppressed`
-1. Call `tool_call` id=`list_unsubscribe__list_suppressed_senders`.
-2. Reply with a short list of keys (domain/email) — no dumps of full JSON.
-
-### `unsuppress <domain-or-email>` / `allow unsub <domain-or-email>`
-1. Call `tool_call` id=`list_unsubscribe__unsuppress_sender` with `key` = that exact suppressed key.
-2. Reply with ok / removed key, or the tool error if not found.
 
 CLI fallback (same effect as Slack `approve`):
 `python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve <pending_id>…`

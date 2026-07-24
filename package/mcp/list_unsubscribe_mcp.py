@@ -1165,7 +1165,11 @@ def propose_unsubscribe(message_id: str, category: str, force: bool = False) -> 
         "subject": item["subject"],
         "message_id": message_id,
         "first_seen": True,
-        "note": "Queued for approval — first time seen for this message/target.",
+        "note": (
+            f"Queued for approval — pending id `{pid}`"
+            + (f" · {item['from']}" if item.get("from") else "")
+            + f". Say `approve {pid}` to unsubscribe (not the same as suppress)."
+        ),
     }
 
 
