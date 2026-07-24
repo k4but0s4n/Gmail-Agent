@@ -1,6 +1,8 @@
 .DS_Store
 .cursor/
 *.pem
+**/__pycache__/
+*.py[cod]
 **/credentials.json
 **/secrets.json
 **/gcp-oauth.keys.json

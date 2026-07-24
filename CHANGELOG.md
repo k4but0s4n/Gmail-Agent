@@ -7,8 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Slack `approve <pending_id>`** — operator-explicit execute via `approve_unsubscribe` (also CLI `--approve`). Never during automated triage.
+- **Slack reject / suppress / unsuppress** — operator phrases call `reject_unsubscribe`, new `suppress_sender` (domain/email + dismiss matching pending), `list_suppressed_senders`, and `unsuppress_sender`.
+- **CLI `--suppress KEY [--email]`** — exclude a domain or address and dismiss matching open pending.
+
 ### Changed
-- **Revert Slack Approve button** — digests are plain text again; *Pending unsubscribe* lists `pending_id` + sender only; approve via CLI. Removed `gmail_slack_interact.py` and Block Kit approve UI.
+- **Slack routing** — `suppress` / `exclude` must call `suppress_sender` only; AGENTS forbids mapping those verbs to `propose_unsubscribe`.
+- **Revert Slack Approve button** — digests are plain text again; *Pending unsubscribe* lists `pending_id` + sender only; approve via Slack `approve <id>` or CLI. Removed `gmail_slack_interact.py` and Block Kit approve UI.
 
 ## [0.3.0] — 2026-07-22
 

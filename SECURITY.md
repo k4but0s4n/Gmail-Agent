@@ -12,14 +12,14 @@ After a human **approves** an unsubscribe, the sender is watched. Past a configu
 
 ## Operator checklist
 
-1. Do **not** allowlist `list_unsubscribe__approve_unsubscribe` on the triage agent.
-2. Do **not** allowlist `reject_unsubscribe`, `unsuppress_sender`, or `clear_post_unsub_watch` on the triage agent (prefer CLI).
+1. `approve_unsubscribe` may be allowlisted for Slack `approve <pending_id>` only — never auto-approve in triage cron.
+2. `reject_unsubscribe` / `suppress_sender` / `unsuppress_sender` may be allowlisted for Slack operator phrases; still prefer not to allowlist `clear_post_unsub_watch` (CLI).
 3. Keep Gmail OAuth files and OpenClaw `secrets.json` outside git (`credentials.json`, `gcp-oauth.keys.json`).
 4. Treat Chroma / embedder / retrieve URLs as trusted internal services; do not expose them publicly without auth.
 5. Prefer `0o600` on state files; scripts already chmod when writing.
-6. Review pending unsubs before `--approve`; one-click targets are re-validated and SSRF-hardened but ESP redirects may fail closed.
+6. Review pending unsubs before approve; one-click targets are re-validated and SSRF-hardened but ESP redirects may fail closed.
 7. Review `--watch` periodically; use `--unwatch` if a legitimate sender was promoted too broadly (domain scope).
-8. Unsubscribe approve is **human CLI only** (`list_unsubscribe_mcp.py --approve <pending_id>`). Digests list pending ids + senders in Slack; do not allowlist `approve_unsubscribe` on the triage agent.
+8. Unsubscribe execute paths: Slack `approve <pending_id>` or CLI `--approve <pending_id>`. Digests list pending ids + senders only.
 
 ## Reporting issues
 
