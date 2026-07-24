@@ -10,4 +10,3 @@ Do not copy into this repo:
 - Filled-in `gmail.env` (use `.env.example` only)
 
 `.env.example` uses placeholder hostnames and Slack channel IDs — replace on each host.
-__pycache__/
