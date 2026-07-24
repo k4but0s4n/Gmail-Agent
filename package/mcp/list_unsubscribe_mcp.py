@@ -156,6 +156,31 @@ TOOLS = [
         },
     },
     {
+        "name": "suppress_sender",
+        "description": (
+            "Exclude a sender email or domain from future unsubscribe proposes, and dismiss "
+            "matching open pending proposals. scope=domain (default) for a bare domain or "
+            "email's domain; scope=email for one address only. Use when the operator says "
+            "suppress/exclude in Slack."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string",
+                    "description": "Email, From header, or domain (e.g. linkedin.com)",
+                },
+                "scope": {
+                    "type": "string",
+                    "enum": ["domain", "email"],
+                    "default": "domain",
+                    "description": "domain=whole domain; email=exact address (requires an email key)",
+                },
+            },
+            "required": ["key"],
+        },
+    },
+    {
         "name": "list_post_unsub_watch",
         "description": (
             "List senders watched after a successful unsubscribe. After grace_days, "
@@ -1500,6 +1525,74 @@ def unsuppress_sender(key: str) -> dict:
     return {"ok": True, "removed": removed}
 
 
+def suppress_sender(key: str, scope: str = "domain") -> dict:
+    """Exclude email/domain from future proposes; dismiss matching open pending ids."""
+    raw = (key or "").strip()
+    if not raw:
+        return {"ok": False, "error": "key required"}
+    scope = (scope or "domain").strip().lower()
+    if scope not in {"domain", "email"}:
+        scope = "domain"
+
+    email = extract_sender_email(raw)
+    if not email and "@" in raw and " " not in raw:
+        email = raw.strip().lower()
+
+    if email:
+        entry = add_suppressed_sender(
+            f"<{email}>",
+            scope=scope,
+            reason="operator_suppress",
+        )
+        if not entry:
+            return {"ok": False, "error": "could not parse email", "key": raw}
+    else:
+        if scope == "email":
+            return {"ok": False, "error": "scope=email requires an email address", "key": raw}
+        domain = raw.lower().lstrip("@").strip()
+        if not domain or "@" in domain or "/" in domain or " " in domain:
+            return {"ok": False, "error": f"invalid domain: {raw}", "key": raw}
+        data = load_suppressed()
+        entry = {
+            "key": domain,
+            "scope": "domain",
+            "example_email": None,
+            "example_from": None,
+            "reason": "operator_suppress",
+            "pending_id": None,
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        }
+        data["entries"][domain] = entry
+        save_suppressed(data)
+
+    sk = entry.get("key") or ""
+    sc = entry.get("scope") or "domain"
+    pending = load_pending()
+    dismissed = dismiss_pending_for_suppressed(pending, sk, sc)
+    if dismissed:
+        save_pending(pending)
+    append_jsonl(
+        LOG_FILE,
+        {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "event": "suppress",
+            "key": sk,
+            "scope": sc,
+            "dismissed_ids": dismissed,
+        },
+    )
+    return {
+        "ok": True,
+        "suppressed": entry,
+        "dismissed_ids": dismissed,
+        "note": (
+            f"Suppressed `{sk}` ({sc}); dismissed {len(dismissed)} pending"
+            if dismissed
+            else f"Suppressed `{sk}` ({sc}); no open pending matched"
+        ),
+    }
+
+
 def call_tool(name: str, args: dict):
     if name == "propose_unsubscribe":
         return propose_unsubscribe(
@@ -1521,6 +1614,11 @@ def call_tool(name: str, args: dict):
         return list_suppressed_senders()
     if name == "unsuppress_sender":
         return unsuppress_sender(str(args.get("key", "")))
+    if name == "suppress_sender":
+        return suppress_sender(
+            str(args.get("key", "")),
+            scope=str(args.get("scope") or "domain"),
+        )
     if name == "list_post_unsub_watch":
         return list_post_unsub_watch()
     if name == "clear_post_unsub_watch":
@@ -1650,6 +1748,19 @@ def main():
         if cmd == "--suppressed":
             print(json.dumps(list_suppressed_senders(), indent=2))
             return
+        if cmd == "--suppress":
+            # --suppress KEY [--email]
+            args = sys.argv[2:]
+            email_scope = "--email" in args
+            keys = [a for a in args if not a.startswith("--")]
+            key = keys[0] if keys else ""
+            print(
+                json.dumps(
+                    suppress_sender(key, scope="email" if email_scope else "domain"),
+                    indent=2,
+                )
+            )
+            return
         if cmd == "--unsuppress":
             print(json.dumps(unsuppress_sender(sys.argv[2] if len(sys.argv) > 2 else ""), indent=2))
             return
@@ -1694,7 +1805,8 @@ def main():
             return
         print(
             "usage: --propose MSG CAT | --pending | --approve ID... | "
-            "--reject ID... [--once] [--email] | --suppressed | --unsuppress KEY | "
+            "--reject ID... [--once] [--email] | --suppress KEY [--email] | "
+            "--suppressed | --unsuppress KEY | "
             "--watch | --unwatch KEY | --watch-add FROM [--grace N] [--days-ago N] [--scope email|domain]",
             file=sys.stderr,
         )

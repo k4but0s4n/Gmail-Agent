@@ -75,6 +75,9 @@ Include:
 - `gmail_triage_ops__finalize_triage`
 - `list_unsubscribe__propose_unsubscribe`
 - `list_unsubscribe__list_pending_unsubscribes`
+- `list_unsubscribe__reject_unsubscribe`
+- `list_unsubscribe__suppress_sender`
+- `list_unsubscribe__unsuppress_sender`
 - `list_unsubscribe__list_suppressed_senders`
 - `list_unsubscribe__list_post_unsub_watch` (optional)
 - `gmail__search_emails`, `gmail__read_email`, `gmail__draft_email` (draft only when asked)
@@ -82,11 +85,9 @@ Include:
 **Do not** allowlist on the triage agent:
 
 - `list_unsubscribe__approve_unsubscribe`
-- `list_unsubscribe__reject_unsubscribe` (optional; prefer CLI)
-- `list_unsubscribe__unsuppress_sender`
-- `list_unsubscribe__clear_post_unsub_watch`
+- `list_unsubscribe__clear_post_unsub_watch` (optional; prefer CLI)
 
-Approve/reject via **CLI** using pending ids shown in the Slack digest. Never allowlist `approve_unsubscribe` on the triage agent.
+Approve via **CLI** using pending ids shown in the Slack digest. Never allowlist `approve_unsubscribe` on the triage agent. Reject / suppress / unsuppress may be invoked from Slack operator phrases.
 
 ```bash
 python3 "$OPENCLAW_HOME/bin/list_unsubscribe_mcp.py" --pending

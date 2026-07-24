@@ -8,7 +8,8 @@
   - `gmail_triage_ops__finalize_triage` — one-shot labels + unsub queue per page (+ mark NEWSLETTER/SOCIAL read)
   - `gmail__search_emails` / `gmail__read_email` / `gmail__draft_email` — only when user asks
   - `list_unsubscribe__propose_unsubscribe` / `list_unsubscribe__list_pending_unsubscribes` — queue only
-- **Never** call `list_unsubscribe__approve_unsubscribe` or `reject_unsubscribe` — human approves via CLI (agent must not approve)
+  - `list_unsubscribe__reject_unsubscribe` / `list_unsubscribe__suppress_sender` / `list_unsubscribe__unsuppress_sender` / `list_unsubscribe__list_suppressed_senders` — only when the user asks in Slack (operator phrases below)
+- **Never** call `list_unsubscribe__approve_unsubscribe` — human approves via CLI only
 - **Do not** call per-message label/propose during triage — `finalize_triage` does that.
 - After a prior successful unsub, `finalize_triage` may force matching senders to **SPAM** (past grace). Categorize normally; do not special-case.
 - Always include `from` on finalize items when known — post-unsub watch matching needs it if header fetch fails.
@@ -108,6 +109,27 @@ Digests show **pending proposal ids** (short hex). Gmail **message ids** are lon
 ### `… and mark as SPAM` / `mark <gmail_message_id> as SPAM`
 1. Call `tool_call` id=`gmail_triage_ops__finalize_triage` with one item `{message_id, category: "SPAM"}` (include `from`/`subject` when known). Invoke the meta-tool — **never echo YAML**.
 2. Confirm the label result from the tool response (`ok`, `labels_applied`). If unsub was also requested, propose first (or rely on finalize’s NEWSLETTER/SPAM queue) and still surface the propose note.
+
+### `reject <pending_id>` / `dismiss <pending_id>`
+1. Call `tool_call` id=`list_unsubscribe__reject_unsubscribe` with that pending id.
+2. Defaults: suppress **domain** + dismiss matching open pending for that domain.
+3. Modifiers (set tool args accordingly):
+   - `reject <pending_id> email` / `reject email <pending_id>` → `suppress_scope=email`
+   - `reject once <pending_id>` / `dismiss once <pending_id>` → `suppress_sender=false` (no future exclude)
+4. Reply with a short note: rejected id, suppressed key/scope (if any), and any `also_dismissed_ids`.
+
+### `suppress <domain-or-email>` / `exclude <domain-or-email>`
+1. Call `tool_call` id=`list_unsubscribe__suppress_sender` with `key` = that domain or email.
+2. Default `scope=domain`. Use `suppress email <address>` → `scope=email`.
+3. This excludes future proposes and dismisses matching open pending. Reply with the tool `note`.
+
+### `list suppressed` / `show suppressed`
+1. Call `tool_call` id=`list_unsubscribe__list_suppressed_senders`.
+2. Reply with a short list of keys (domain/email) — no dumps of full JSON.
+
+### `unsuppress <domain-or-email>` / `allow unsub <domain-or-email>`
+1. Call `tool_call` id=`list_unsubscribe__unsuppress_sender` with `key` = that exact suppressed key.
+2. Reply with ok / removed key, or the tool error if not found.
 
 Approve is **human-only** (not this agent) via CLI:
 `python3 $OPENCLAW_HOME/bin/list_unsubscribe_mcp.py --approve <pending_id>…`

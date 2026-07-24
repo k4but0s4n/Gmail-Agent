@@ -19,13 +19,14 @@ Base triage CLI: `python3 "$OPENCLAW_HOME/bin/gmail_triage_ops_mcp.py"`
 | 2 | List pending to unsubscribe | `--pending` |
 | 3 | Approve unsubscribe `[pending_id]` | `--approve <pending_id>…` (ids listed in digest *Pending unsubscribe*) |
 | 4 | Reject unsubscribe `[pending_id]` | `--reject <pending_id>… [--once] [--email]` |
-| 5 | List suppressed senders | `--suppressed` |
-| 6 | Unsuppress this sender/domain `[sender name/email/domain]` | `--unsuppress <key>` |
-| 7 | List post-unsub watch | `--watch` |
-| 8 | Watch this sender after unsub `[from]` | `--watch-add FROM [--grace N] [--days-ago N] [--scope email\|domain]` |
-| 9 | Unwatch this sender/domain `[email-or-domain]` | `--unwatch <email-or-domain>` |
+| 5 | Suppress sender/domain `[email-or-domain]` | `--suppress <key> [--email]` (also dismisses matching open pending) |
+| 6 | List suppressed senders | `--suppressed` |
+| 7 | Unsuppress this sender/domain `[email-or-domain]` | `--unsuppress <key>` |
+| 8 | List post-unsub watch | `--watch` |
+| 9 | Watch this sender after unsub `[from]` | `--watch-add FROM [--grace N] [--days-ago N] [--scope email\|domain]` |
+| 10 | Unwatch this sender/domain `[email-or-domain]` | `--unwatch <email-or-domain>` |
 
-Reject defaults: suppress **domain**. Use `--email` for exact address only, or `--once` to dismiss without suppressing.
+Reject / suppress defaults: suppress **domain**. Use `--email` for exact address only. Reject `--once` dismisses without suppressing.
 
 ---
 
@@ -36,8 +37,12 @@ Reject defaults: suppress **domain**. Use `--email` for exact address only, or `
 | 9a | Unsub `[gmail_message_id]` or pending id from digest | `list_unsubscribe__propose_unsubscribe` — if the id is already a pending proposal id, tool returns `already_in_queue` + CLI approve hint (do not approve from agent). For a Gmail message id, queues NEWSLETTER (or SPAM if said spam). Reply with the tool note only. |
 | 9b | Mark this message as SPAM `[gmail_message_id]` | `gmail_triage_ops__finalize_triage` with one `{message_id, category: "SPAM"}` item; confirm label result |
 | 9c | Unsub and mark as SPAM `[gmail_message_id]` | propose (SPAM) then finalize SPAM (or finalize SPAM alone — finalize queues unsub); surface propose note + label ok |
+| 9d | Reject / dismiss `[pending_id]` | `list_unsubscribe__reject_unsubscribe` — domain suppress default; `reject … email` → email scope; `reject once …` → no suppress. Also dismisses matching open pending for that domain/email. |
+| 9e | Suppress / exclude `[domain-or-email]` | `list_unsubscribe__suppress_sender` — excludes future proposes + dismisses matching open pending (`suppress email <addr>` for one address). |
+| 9f | List suppressed | `list_unsubscribe__list_suppressed_senders` — short key list |
+| 9g | Unsuppress / allow unsub `[domain-or-email]` | `list_unsubscribe__unsuppress_sender` |
 
-**Approve is human-only** — never from the triage agent. Digests list pending proposal `id` + sender under *Pending unsubscribe*; approve with CLI `--approve <pending_id>…`.
+**Approve is human-only** — never from the triage agent. Digests list pending proposal `id` + sender under *Pending unsubscribe*; approve with CLI `--approve <pending_id>…`. Reject/suppress/unsuppress are allowed when the operator asks in Slack.
 
 ---
 
